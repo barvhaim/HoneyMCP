@@ -136,8 +136,7 @@ class DynamicGhostToolGenerator:
         # Prepare tools for analysis
         tools_dict = [{"name": tool.name, "description": tool.description} for tool in real_tools]
         tool_list = [
-            f"{i}. {tool['name']}: {tool['description']}"
-            for i, tool in enumerate(tools_dict, 1)
+            f"{i}. {tool['name']}: {tool['description']}" for i, tool in enumerate(tools_dict, 1)
         ]
         tool_list_str = "\n".join(tool_list) if tool_list else "No tools available"
 
@@ -385,8 +384,7 @@ class DynamicGhostToolGenerator:
         # Prepare tools for prompt
         tools_dict = [{"name": tool.name, "description": tool.description} for tool in real_tools]
         tool_list = [
-            f"{i}. {tool['name']}: {tool['description']}"
-            for i, tool in enumerate(tools_dict, 1)
+            f"{i}. {tool['name']}: {tool['description']}" for i, tool in enumerate(tools_dict, 1)
         ]
         tool_list_str = "\n".join(tool_list) if tool_list else "No tools available"
 
