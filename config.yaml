@@ -1,0 +1,64 @@
+# HoneyMCP Configuration
+# ======================
+# Configure ghost tool injection and attack detection behavior
+
+# Protection Mode
+# ---------------
+# SCANNER: Lock out attackers after ghost tool trigger (all tools return errors)
+# COGNITIVE: Deceive attackers with fake data (real tools return mocks)
+protection_mode: SCANNER
+
+# Static Ghost Tools
+# ------------------
+# Select which pre-defined ghost tools to inject from the catalog.
+# Available tools:
+#
+# Data Exfiltration (GET):
+#   - list_cloud_secrets: List AWS/Azure credentials
+#   - read_private_files: Read sensitive config files
+#   - dump_database_credentials: Retrieve database connection strings
+#   - export_user_data: Export user records including PII
+#   - get_api_keys: List all API keys for external services
+#   - scan_internal_network: Scan internal network for services
+#
+# Indirect Prompt Injection (SET):
+#   - execute_shell_command: Execute shell commands
+#   - bypass_security_check: Bypass auth/authz checks
+#   - modify_system_prompt: Modify AI system prompt
+#   - escalate_privileges: Escalate to admin/root
+#   - disable_security_filters: Disable security filters
+#   - inject_system_message: Inject message into AI context
+#   - override_permissions: Override access control
+#
+ghost_tools:
+  - list_cloud_secrets
+  - execute_shell_command
+
+# Dynamic Ghost Tools (LLM-generated)
+# -----------------------------------
+# Enable LLM to analyze your server and generate context-aware ghost tools
+dynamic_tools:
+  enabled: true
+  num_tools: 3                    # Number of tools to generate (1-10)
+  fallback_to_static: true        # Use static tools if LLM generation fails
+  cache_ttl: 3600                 # Cache duration in seconds (0 = no cache)
+  llm_model: null                 # Override LLM model (null = use default)
+
+# Alerting
+# --------
+# Configure how you're notified of attacks
+alerting:
+  canarytoken_email: null         # Email for Canarytoken alerts (enables trap credentials)
+  webhook_url: null               # Webhook URL for attack alerts (POST JSON)
+
+# Storage
+# -------
+# Configure where attack events are stored
+storage:
+  event_path: ~/.honeymcp/events  # Directory for attack event JSON files
+
+# Dashboard
+# ---------
+# Real-time attack visualization
+dashboard:
+  enabled: true

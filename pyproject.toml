@@ -1,0 +1,76 @@
+[project]
+name = "honeymcp"
+version = "0.1.0"
+description = "Deception middleware for AI agents - detecting data theft and indirect prompt injection in MCP servers"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "Bar Haim", email = "barha@il.ibm.com"},
+    {name = "Alon Malach", email = "Alon.Malach@ibm.com"},
+]
+maintainers = [
+    {name = "Bar Haim", email = "barha@il.ibm.com"},
+    {name = "Alon Malach", email = "Alon.Malach@ibm.com"},
+]
+keywords = [
+    "mcp",
+    "model-context-protocol",
+    "security",
+    "honeypot",
+    "deception",
+    "ai-security",
+    "prompt-injection",
+    "data-exfiltration",
+    "fastmcp",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Framework :: FastAPI",
+]
+dependencies = [
+    "fastmcp>=3.0.0b1",
+    "pydantic>=2.10.0",
+    "pyyaml>=6.0.0",
+    "streamlit>=1.42.0",
+    "requests>=2.32.0",
+    "python-dateutil>=2.9.0",
+    "rich>=14.0.0",
+    "aiofiles>=25.0.0",
+    "uvicorn>=0.34.0",
+    "starlette>=0.45.0",
+    "litellm>=1.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/barvhaim/HoneyMCP"
+Documentation = "https://github.com/barvhaim/HoneyMCP#readme"
+Repository = "https://github.com/barvhaim/HoneyMCP"
+Issues = "https://github.com/barvhaim/HoneyMCP/issues"
+
+[dependency-groups]
+dev = [
+    "black>=26.1.0",
+    "pylint>=4.0.4",
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.26.0",
+    "httpx>=0.27.0",
+    "build>=1.0.0",
+    "twine>=5.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
