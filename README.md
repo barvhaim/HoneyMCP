@@ -1,5 +1,7 @@
 # 🍯 HoneyMCP
 
+![HoneyMCP logo](images/logo.png)
+
 **Deception Middleware for AI Agents - Detecting Data Theft and Indirect Prompt Injection**
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
