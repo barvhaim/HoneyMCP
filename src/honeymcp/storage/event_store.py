@@ -29,10 +29,7 @@ async def store_event(
     date_dir.mkdir(parents=True, exist_ok=True)
 
     # Generate filename: HHMMSS_session_id.json
-    filename = (
-        f"{fingerprint.timestamp.strftime('%H%M%S')}_"
-        f"{fingerprint.session_id[:8]}.json"
-    )
+    filename = f"{fingerprint.timestamp.strftime('%H%M%S')}_" f"{fingerprint.session_id[:8]}.json"
     filepath = date_dir / filename
 
     # Write event to JSON file

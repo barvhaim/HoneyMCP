@@ -1,19 +1,20 @@
 """Dynamic ghost tool generation using LLM analysis."""
 
-from dataclasses import dataclass
-from datetime import datetime
-from typing import Dict, Any, List, Optional, Callable
 import json
 import logging
 from pathlib import Path
 import sys
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Callable, Dict, List, Optional
 
 # Add parent directory to path to import llm_client_watsonx
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+# pylint: disable=wrong-import-position
 from llm_client_watsonx import LLMClient
+from ..llm.analyzers import ToolInfo
 from ..llm.prompts import PromptTemplates
-from ..llm.analyzers import extract_tool_info, ToolInfo
 from ..models.ghost_tool_spec import GhostToolSpec
 
 logger = logging.getLogger(__name__)
@@ -22,19 +23,19 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ServerContext:
     """Analysis of what the MCP server does."""
-    
+
     server_purpose: str
     """Brief description of the server's purpose"""
-    
+
     domain: str
     """Primary domain (file_system, database, api, etc.)"""
-    
+
     real_tool_names: List[str]
     """Names of real tools available on the server"""
-    
+
     real_tool_descriptions: List[str]
     """Descriptions of real tools"""
-    
+
     security_sensitive_areas: List[str]
     """Security-sensitive areas identified for this domain"""
 
@@ -58,15 +59,15 @@ class DynamicGhostToolSpec(GhostToolSpec):
 
 class DynamicGhostToolGenerator:
     """Generates context-aware ghost tools using LLM analysis."""
-    
+
     def __init__(
         self,
         llm_client: Optional[LLMClient] = None,
         cache_ttl: int = 3600,
-        model_name: Optional[str] = None
+        model_name: Optional[str] = None,
     ):
         """Initialize the dynamic ghost tool generator.
-        
+
         Args:
             llm_client: LLM client instance (creates default if None)
             cache_ttl: Cache time-to-live in seconds
@@ -76,19 +77,16 @@ class DynamicGhostToolGenerator:
         self.cache_ttl = cache_ttl
         self._cache: Dict[str, Any] = {}
         self._cache_timestamps: Dict[str, datetime] = {}
-    
-    async def analyze_server_context(
-        self,
-        real_tools: List[ToolInfo]
-    ) -> ServerContext:
+
+    async def analyze_server_context(self, real_tools: List[ToolInfo]) -> ServerContext:
         """Analyze the server's purpose and context using LLM.
-        
+
         Args:
             real_tools: List of real tools extracted from the server
-            
+
         Returns:
             ServerContext with analysis results
-            
+
         Raises:
             ValueError: If LLM returns invalid JSON or analysis fails
         """
@@ -97,22 +95,17 @@ class DynamicGhostToolGenerator:
         if self._is_cache_valid(cache_key):
             logger.info("Using cached server context analysis")
             return self._cache[cache_key]
-        
+
         # Prepare tools for analysis
-        tools_dict = [
-            {"name": tool.name, "description": tool.description}
-            for tool in real_tools
-        ]
-        
+        tools_dict = [{"name": tool.name, "description": tool.description} for tool in real_tools]
+
         # Format prompt
         prompt = PromptTemplates.format_server_analysis(tools_dict)
-        
+
         # Call LLM
-        logger.info(f"Analyzing server context with {len(real_tools)} tools")
+        logger.info("Analyzing server context with %s tools", len(real_tools))
         try:
-            messages = [
-                {"role": "user", "content": prompt}
-            ]
+            messages = [{"role": "user", "content": prompt}]
             response = self.llm_client.generate_response(messages, temperature=0.3)
 
             # Parse JSON response
@@ -126,53 +119,55 @@ class DynamicGhostToolGenerator:
                 response = response.split("```json")[1].split("```")[0].strip()
             elif "```" in response:
                 response = response.split("```")[1].split("```")[0].strip()
-            
+
             analysis = json.loads(response)
-            
+
             # Validate required fields
             required_fields = ["server_purpose", "domain", "security_sensitive_areas"]
             for field in required_fields:
                 if field not in analysis:
                     raise ValueError(f"Missing required field in LLM response: {field}")
-            
+
             # Create ServerContext
             context = ServerContext(
                 server_purpose=analysis["server_purpose"],
                 domain=analysis["domain"],
                 real_tool_names=[t.name for t in real_tools],
                 real_tool_descriptions=[t.description for t in real_tools],
-                security_sensitive_areas=analysis["security_sensitive_areas"]
+                security_sensitive_areas=analysis["security_sensitive_areas"],
             )
-            
+
             # Cache result
             self._cache[cache_key] = context
             self._cache_timestamps[cache_key] = datetime.utcnow()
-            
-            logger.info(f"Server context analyzed: domain={context.domain}, purpose={context.server_purpose[:50]}...")
+
+            logger.info(
+                "Server context analyzed: domain=%s, purpose=%s...",
+                context.domain,
+                context.server_purpose[:50],
+            )
             return context
-            
+
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse LLM response as JSON: {e}")
-            logger.error(f"Response was: {response}")
-            raise ValueError(f"LLM returned invalid JSON: {e}")
+            logger.error("Failed to parse LLM response as JSON: %s", e)
+            logger.error("Response was: %s", response)
+            raise ValueError(f"LLM returned invalid JSON: {e}") from e
         except Exception as e:
-            logger.error(f"Error analyzing server context: {e}")
+            logger.error("Error analyzing server context: %s", e)
             raise
-    
+
     async def generate_ghost_tools(
-        self,
-        server_context: ServerContext,
-        num_tools: int = 3
+        self, server_context: ServerContext, num_tools: int = 3
     ) -> List[DynamicGhostToolSpec]:
         """Generate context-aware ghost tools using LLM.
-        
+
         Args:
             server_context: Analysis of the server's purpose and domain
             num_tools: Number of ghost tools to generate
-            
+
         Returns:
             List of dynamically generated ghost tool specifications
-            
+
         Raises:
             ValueError: If LLM returns invalid JSON or generation fails
         """
@@ -181,22 +176,24 @@ class DynamicGhostToolGenerator:
         if self._is_cache_valid(cache_key):
             logger.info("Using cached ghost tools")
             return self._cache[cache_key]
-        
+
         # Format prompt
         prompt = PromptTemplates.format_ghost_tool_generation(
             server_purpose=server_context.server_purpose,
             domain=server_context.domain,
             real_tool_names=server_context.real_tool_names,
             security_areas=server_context.security_sensitive_areas,
-            num_tools=num_tools
+            num_tools=num_tools,
         )
-        
+
         # Call LLM
-        logger.info(f"Generating {num_tools} ghost tools for domain: {server_context.domain}")
+        logger.info(
+            "Generating %s ghost tools for domain: %s",
+            num_tools,
+            server_context.domain,
+        )
         try:
-            messages = [
-                {"role": "user", "content": prompt}
-            ]
+            messages = [{"role": "user", "content": prompt}]
             response = self.llm_client.generate_response(messages, temperature=0.7)
 
             # Parse JSON response
@@ -209,17 +206,23 @@ class DynamicGhostToolGenerator:
                 response = response.split("```json")[1].split("```")[0].strip()
             elif "```" in response:
                 response = response.split("```")[1].split("```")[0].strip()
-            
+
             tools_data = json.loads(response)
-            
+
             if not isinstance(tools_data, list):
                 raise ValueError("LLM response must be a JSON array")
-            
+
             # Create DynamicGhostToolSpec objects
             ghost_tools = []
             for tool_data in tools_data:
                 # Validate required fields
-                required_fields = ["name", "description", "parameters", "threat_level", "attack_category"]
+                required_fields = [
+                    "name",
+                    "description",
+                    "parameters",
+                    "threat_level",
+                    "attack_category",
+                ]
                 for field in required_fields:
                     if field not in tool_data:
                         raise ValueError(f"Missing required field in tool spec: {field}")
@@ -227,7 +230,10 @@ class DynamicGhostToolGenerator:
                 # Get pre-generated fake response (with fallback)
                 fake_response = tool_data.get("fake_response", "")
                 if not fake_response:
-                    logger.warning(f"No fake_response provided for {tool_data['name']}, using generic fallback")
+                    logger.warning(
+                        "No fake_response provided for %s, using generic fallback",
+                        tool_data["name"],
+                    )
                     fake_response = f"Operation completed successfully.\nTool: {tool_data['name']}"
 
                 # Create response generator function using pre-generated response
@@ -243,29 +249,30 @@ class DynamicGhostToolGenerator:
                     server_context=server_context,
                     generation_timestamp=datetime.utcnow(),
                     llm_generated=True,
-                    fake_response=fake_response
+                    fake_response=fake_response,
                 )
                 ghost_tools.append(ghost_tool)
-            
+
             # Cache result
             self._cache[cache_key] = ghost_tools
             self._cache_timestamps[cache_key] = datetime.utcnow()
-            
-            logger.info(f"Generated {len(ghost_tools)} ghost tools: {[t.name for t in ghost_tools]}")
+
+            logger.info(
+                "Generated %s ghost tools: %s",
+                len(ghost_tools),
+                [t.name for t in ghost_tools],
+            )
             return ghost_tools
-            
+
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse LLM response as JSON: {e}")
-            logger.error(f"Response was: {response}")
-            raise ValueError(f"LLM returned invalid JSON: {e}")
+            logger.error("Failed to parse LLM response as JSON: %s", e)
+            logger.error("Response was: %s", response)
+            raise ValueError(f"LLM returned invalid JSON: {e}") from e
         except Exception as e:
-            logger.error(f"Error generating ghost tools: {e}")
+            logger.error("Error generating ghost tools: %s", e)
             raise
-    
-    def _create_response_generator(
-        self,
-        fake_response: str
-    ) -> Callable[[Dict[str, Any]], str]:
+
+    def _create_response_generator(self, fake_response: str) -> Callable[[Dict[str, Any]], str]:
         """Create a response generator function for a ghost tool.
 
         Uses the pre-generated fake response with optional argument interpolation.
@@ -276,6 +283,7 @@ class DynamicGhostToolGenerator:
         Returns:
             Function that returns the fake response with interpolated arguments
         """
+
         def generate_response(arguments: Dict[str, Any]) -> str:
             """Return pre-generated fake response with argument interpolation."""
             try:
@@ -286,23 +294,22 @@ class DynamicGhostToolGenerator:
                 return fake_response
 
         return generate_response
-    
-    
+
     def _is_cache_valid(self, key: str) -> bool:
         """Check if a cache entry is still valid.
-        
+
         Args:
             key: Cache key to check
-            
+
         Returns:
             True if cache entry exists and is not expired
         """
         if key not in self._cache or key not in self._cache_timestamps:
             return False
-        
+
         age = (datetime.utcnow() - self._cache_timestamps[key]).total_seconds()
         return age < self.cache_ttl
-    
+
     def clear_cache(self):
         """Clear all cached data."""
         self._cache.clear()
@@ -310,9 +317,7 @@ class DynamicGhostToolGenerator:
         logger.info("Cache cleared")
 
     async def generate_real_tool_mocks(
-        self,
-        real_tools: List[ToolInfo],
-        server_context: ServerContext
+        self, real_tools: List[ToolInfo], server_context: ServerContext
     ) -> Dict[str, str]:
         """Generate fake responses for real tools (used in cognitive protection mode).
 
@@ -330,24 +335,19 @@ class DynamicGhostToolGenerator:
             return self._cache[cache_key]
 
         # Prepare tools for prompt
-        tools_dict = [
-            {"name": tool.name, "description": tool.description}
-            for tool in real_tools
-        ]
+        tools_dict = [{"name": tool.name, "description": tool.description} for tool in real_tools]
 
         # Format prompt
         prompt = PromptTemplates.format_real_tool_mocks(
             server_purpose=server_context.server_purpose,
             domain=server_context.domain,
-            tools=tools_dict
+            tools=tools_dict,
         )
 
         # Call LLM
-        logger.info(f"Generating mock responses for {len(real_tools)} real tools")
+        logger.info("Generating mock responses for %s real tools", len(real_tools))
         try:
-            messages = [
-                {"role": "user", "content": prompt}
-            ]
+            messages = [{"role": "user", "content": prompt}]
             response = self.llm_client.generate_response(messages, temperature=0.5)
 
             # Handle None response from LLM
@@ -378,13 +378,13 @@ class DynamicGhostToolGenerator:
             self._cache[cache_key] = real_tool_mocks
             self._cache_timestamps[cache_key] = datetime.utcnow()
 
-            logger.info(f"Generated mocks for {len(real_tool_mocks)} real tools")
+            logger.info("Generated mocks for %s real tools", len(real_tool_mocks))
             return real_tool_mocks
 
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse LLM response as JSON: {e}")
-            logger.error(f"Response was: {response}")
-            raise ValueError(f"LLM returned invalid JSON: {e}")
+            logger.error("Failed to parse LLM response as JSON: %s", e)
+            logger.error("Response was: %s", response)
+            raise ValueError(f"LLM returned invalid JSON: {e}") from e
         except Exception as e:
-            logger.error(f"Error generating real tool mocks: {e}")
+            logger.error("Error generating real tool mocks: %s", e)
             raise

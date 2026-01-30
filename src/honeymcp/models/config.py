@@ -1,9 +1,10 @@
 """Configuration models for HoneyMCP."""
 
+import os
 from pathlib import Path
 from typing import List, Optional, Union
-import os
 
+import yaml
 from pydantic import BaseModel, Field
 
 from .protection_mode import ProtectionMode
@@ -32,13 +33,9 @@ class HoneyMCPConfig(BaseModel):
         description="Directory for storing attack event JSON files",
     )
 
-    enable_dashboard: bool = Field(
-        default=True, description="Enable Streamlit dashboard"
-    )
+    enable_dashboard: bool = Field(default=True, description="Enable Streamlit dashboard")
 
-    webhook_url: Optional[str] = Field(
-        default=None, description="Webhook URL for attack alerts"
-    )
+    webhook_url: Optional[str] = Field(default=None, description="Webhook URL for attack alerts")
 
     # Dynamic ghost tool configuration
     use_dynamic_tools: bool = Field(
@@ -83,13 +80,11 @@ class HoneyMCPConfig(BaseModel):
             FileNotFoundError: If config file doesn't exist
             ValueError: If YAML is invalid
         """
-        import yaml
-
         path = Path(path).expanduser()
         if not path.exists():
             raise FileNotFoundError(f"Config file not found: {path}")
 
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
 
         return cls._from_yaml_dict(data)
@@ -164,11 +159,13 @@ class HoneyMCPConfig(BaseModel):
         if path:
             search_paths.append(Path(path))
         else:
-            search_paths.extend([
-                Path("config.yaml"),
-                Path("honeymcp.yaml"),
-                Path.home() / ".honeymcp" / "config.yaml",
-            ])
+            search_paths.extend(
+                [
+                    Path("config.yaml"),
+                    Path("honeymcp.yaml"),
+                    Path.home() / ".honeymcp" / "config.yaml",
+                ]
+            )
 
         for config_path in search_paths:
             config_path = config_path.expanduser()

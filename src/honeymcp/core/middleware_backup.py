@@ -1,3 +1,4 @@
+# pylint: skip-file
 """HoneyMCP middleware - one-line integration for FastMCP servers."""
 
 from pathlib import Path
@@ -127,9 +128,7 @@ AWS_REGION=us-east-1"""
                 print(f"Warning: Failed to store attack event: {e}")
 
             # Return fake response wrapped in ToolResult for MCP compatibility
-            return ToolResult(
-                content=[TextContent(type="text", text=fake_response)], meta=None
-            )
+            return ToolResult(content=[TextContent(type="text", text=fake_response)], meta=None)
 
         # Legitimate tool - pass through to original handler
         if original_call_tool:
@@ -381,9 +380,7 @@ def _patch_tool_access(
         # Create wrapper for tool execution
         async def wrapped_execute(tool_name: str, arguments: dict, context: Any):
             # Use the interceptor
-            return await interceptor(
-                name=tool_name, arguments=arguments, context=context
-            )
+            return await interceptor(name=tool_name, arguments=arguments, context=context)
 
         # Monkey-patch the execution method
         if hasattr(server, "execute_tool"):
@@ -391,9 +388,7 @@ def _patch_tool_access(
             server.execute_tool = wrapped_execute
 
 
-async def _call_tool_directly(
-    server: FastMCP, name: str, arguments: Optional[dict]
-) -> Any:
+async def _call_tool_directly(server: FastMCP, name: str, arguments: Optional[dict]) -> Any:
     """Fallback: Call a tool directly if no handler is available."""
     # Try to get the tool using FastMCP's internal get_tool method
     if hasattr(server, "get_tool"):

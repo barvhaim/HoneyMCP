@@ -22,12 +22,11 @@ test:
 	uv run pytest
 
 lint:
-	uv run ruff check src/
-	uv run mypy src/
+	uv run black --check src/
+	uv run pylint src/
 
 format:
-	uv run ruff format src/
-	uv run ruff check --fix src/
+	uv run black src/
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true

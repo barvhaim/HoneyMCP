@@ -11,6 +11,7 @@ import streamlit as st
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+# pylint: disable=wrong-import-position
 from honeymcp.models.events import AttackFingerprint
 from honeymcp.storage.event_store import list_events
 
@@ -49,7 +50,7 @@ def format_timestamp(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
-def main():
+def main():  # pylint: disable=too-many-branches,too-many-statements
     """Main dashboard application."""
 
     # Header
@@ -100,24 +101,18 @@ def main():
 
     if threat_filter != "All":
         filtered_events = [
-            e
-            for e in filtered_events
-            if e.threat_level.lower() == threat_filter.lower()
+            e for e in filtered_events if e.threat_level.lower() == threat_filter.lower()
         ]
 
     if category_filter != "All":
-        filtered_events = [
-            e for e in filtered_events if e.attack_category == category_filter
-        ]
+        filtered_events = [e for e in filtered_events if e.attack_category == category_filter]
 
     # Metrics row
     st.header("📊 Attack Metrics")
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        today_attacks = len(
-            [e for e in events if (datetime.utcnow() - e.timestamp).days < 1]
-        )
+        today_attacks = len([e for e in events if (datetime.utcnow() - e.timestamp).days < 1])
         st.metric(
             "Total Attacks",
             len(events),
@@ -157,9 +152,7 @@ def main():
             st.subheader("By Category")
             category_counts = {}
             for e in events:
-                category_counts[e.attack_category] = (
-                    category_counts.get(e.attack_category, 0) + 1
-                )
+                category_counts[e.attack_category] = category_counts.get(e.attack_category, 0) + 1
             st.bar_chart(category_counts)
 
         st.markdown("---")
@@ -203,9 +196,7 @@ def main():
                     if event.canarytoken_id:
                         st.text(f"Canarytoken: {event.canarytoken_id}")
                         exfil_status = (
-                            "✅ Confirmed"
-                            if event.exfiltration_confirmed
-                            else "⏳ Pending"
+                            "✅ Confirmed" if event.exfiltration_confirmed else "⏳ Pending"
                         )
                         st.text(f"Exfiltration: {exfil_status}")
 

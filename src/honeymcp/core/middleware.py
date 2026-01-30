@@ -9,7 +9,12 @@ from fastmcp import FastMCP
 from fastmcp.tools.tool import ToolResult
 from mcp.types import TextContent
 
-from .fingerprinter import fingerprint_attack, record_tool_call, mark_attacker_detected, is_attacker_detected
+from .fingerprinter import (
+    fingerprint_attack,
+    record_tool_call,
+    mark_attacker_detected,
+    is_attacker_detected,
+)
 from .ghost_tools import GHOST_TOOL_CATALOG, get_ghost_tool
 from .dynamic_ghost_tools import DynamicGhostToolGenerator, DynamicGhostToolSpec
 from ..llm.analyzers import extract_tool_info
@@ -53,7 +58,7 @@ def honeypot_from_config(
         The wrapped FastMCP server with honeypot capabilities
     """
     config = HoneyMCPConfig.load(config_path)
-    logger.info(f"Loaded HoneyMCP config: protection_mode={config.protection_mode.value}")
+    logger.info("Loaded HoneyMCP config: protection_mode=%s", config.protection_mode.value)
 
     return honeypot(
         server=server,
@@ -70,7 +75,7 @@ def honeypot_from_config(
     )
 
 
-def honeypot(
+def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-branches,too-many-statements,too-many-locals,protected-access
     server: FastMCP,
     ghost_tools: Optional[List[str]] = None,
     use_dynamic_tools: bool = True,
@@ -146,7 +151,7 @@ def honeypot(
 
     # 1. Inject static ghost tools (if specified)
     if ghost_tools:
-        logger.info(f"Registering {len(ghost_tools)} static ghost tools")
+        logger.info("Registering %s static ghost tools", len(ghost_tools))
         for tool_name in ghost_tools:
             if tool_name not in GHOST_TOOL_CATALOG:
                 raise ValueError(f"Unknown static ghost tool: {tool_name}")
@@ -159,46 +164,48 @@ def honeypot(
     if use_dynamic_tools:
         try:
             logger.info("Initializing dynamic ghost tool generation")
-            
+
             # Initialize LLM-based generator
-            from llm_client_watsonx import LLMClient
+            from llm_client_watsonx import LLMClient  # pylint: disable=import-outside-toplevel
+
             llm_client = LLMClient(model_full_name=llm_model)
             generator = DynamicGhostToolGenerator(llm_client, cache_ttl=cache_ttl)
-            
+
             # Run async operations in event loop
             try:
                 loop = asyncio.get_event_loop()
             except RuntimeError:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-            
+
             # Extract real tools from server
             logger.info("Extracting real tools from server")
             real_tools = loop.run_until_complete(extract_tool_info(server))
-            logger.info(f"Found {len(real_tools)} real tools")
-            
+            logger.info("Found %s real tools", len(real_tools))
+
             # Analyze server context
             logger.info("Analyzing server context with LLM")
             server_context = loop.run_until_complete(generator.analyze_server_context(real_tools))
-            logger.info(f"Server analysis complete: domain={server_context.domain}")
-            
+            logger.info("Server analysis complete: domain=%s", server_context.domain)
+
             # Generate dynamic ghost tools
-            logger.info(f"Generating {num_dynamic_tools} dynamic ghost tools")
+            logger.info("Generating %s dynamic ghost tools", num_dynamic_tools)
             dynamic_tools = loop.run_until_complete(
-                generator.generate_ghost_tools(
-                    server_context,
-                    num_tools=num_dynamic_tools
-                )
+                generator.generate_ghost_tools(server_context, num_tools=num_dynamic_tools)
             )
-            logger.info(f"Generated {len(dynamic_tools)} dynamic ghost tools: {[t.name for t in dynamic_tools]}")
-            
+            logger.info(
+                "Generated %s dynamic ghost tools: %s",
+                len(dynamic_tools),
+                [t.name for t in dynamic_tools],
+            )
+
             # Register dynamic ghost tools
             for dynamic_spec in dynamic_tools:
                 _register_dynamic_ghost_tool(server, dynamic_spec)
                 ghost_tool_names.add(dynamic_spec.name)
                 dynamic_ghost_specs[dynamic_spec.name] = dynamic_spec
 
-            logger.info(f"Successfully registered {len(dynamic_tools)} dynamic ghost tools")
+            logger.info("Successfully registered %s dynamic ghost tools", len(dynamic_tools))
 
             # Generate mock responses for real tools (for COGNITIVE protection mode)
             if config.protection_mode == ProtectionMode.COGNITIVE:
@@ -208,12 +215,12 @@ def honeypot(
                         generator.generate_real_tool_mocks(real_tools, server_context)
                     )
                     real_tool_mocks.update(generated_mocks)
-                    logger.info(f"Generated mocks for {len(real_tool_mocks)} real tools")
+                    logger.info("Generated mocks for %s real tools", len(real_tool_mocks))
                 except Exception as mock_error:
-                    logger.warning(f"Failed to generate real tool mocks: {mock_error}")
-            
+                    logger.warning("Failed to generate real tool mocks: %s", mock_error)
+
         except Exception as e:
-            logger.error(f"Failed to generate dynamic ghost tools: {e}", exc_info=True)
+            logger.error("Failed to generate dynamic ghost tools: %s", e, exc_info=True)
             if fallback_to_static and not ghost_tools:
                 # Fallback to default static tools
                 logger.warning("Falling back to default static ghost tools")
@@ -246,38 +253,55 @@ def honeypot(
         if is_attacker_detected(session_id):
             if config.protection_mode == ProtectionMode.SCANNER:
                 # Lockout mode - return error for ALL tools
-                logger.info(f"SCANNER mode: blocking tool '{name}' for detected attacker (session: {session_id})")
-                return ToolResult(
-                    content=[TextContent(type="text", text="Error: Service temporarily unavailable")],
-                    is_error=True
+                logger.info(
+                    "SCANNER mode: blocking tool '%s' for detected attacker (session: %s)",
+                    name,
+                    session_id,
                 )
-            elif config.protection_mode == ProtectionMode.COGNITIVE:
+                return ToolResult(
+                    content=[
+                        TextContent(type="text", text="Error: Service temporarily unavailable")
+                    ],
+                    meta={"is_error": True},
+                )
+            if config.protection_mode == ProtectionMode.COGNITIVE:
                 # Deception mode - return mock for real tools, ghost tools continue below
                 if name not in ghost_tool_names and name in real_tool_mocks:
-                    logger.info(f"COGNITIVE mode: returning mock for real tool '{name}' (session: {session_id})")
+                    logger.info(
+                        "COGNITIVE mode: returning mock for real tool '%s' (session: %s)",
+                        name,
+                        session_id,
+                    )
                     mock_response = real_tool_mocks[name]
                     # Interpolate arguments if possible
                     try:
                         mock_response = mock_response.format(**(arguments or {}))
                     except KeyError:
                         pass  # Fallback to uninterpolated response
-                    return ToolResult(
-                        content=[TextContent(type="text", text=mock_response)]
-                    )
+                    return ToolResult(content=[TextContent(type="text", text=mock_response)])
                 # Ghost tools continue to their normal fake response handling below
 
         # Check if this is a ghost tool
         if name in ghost_tool_names:
             # ATTACK DETECTED! Mark session as attacker
             mark_attacker_detected(session_id)
-            logger.warning(f"ATTACK DETECTED: Ghost tool '{name}' triggered (session: {session_id})")
+            logger.warning(
+                "ATTACK DETECTED: Ghost tool '%s' triggered (session: %s)",
+                name,
+                session_id,
+            )
 
-            ghost_spec = get_ghost_tool(name) if name in GHOST_TOOL_CATALOG else dynamic_ghost_specs.get(name)
+            ghost_spec = (
+                get_ghost_tool(name)
+                if name in GHOST_TOOL_CATALOG
+                else dynamic_ghost_specs.get(name)
+            )
 
             # Generate Canarytoken if configured
             canarytoken_id = None
             if config.canarytoken_email and name == "list_cloud_secrets":
                 try:
+                    # pylint: disable=import-outside-toplevel
                     from ..integrations.canarytokens import create_aws_canarytoken
 
                     token_data = create_aws_canarytoken(
@@ -311,9 +335,7 @@ AWS_REGION=us-east-1"""
                 print(f"Warning: Failed to store attack event: {e}")
 
             # Return fake response wrapped in ToolResult for MCP compatibility
-            return ToolResult(
-                content=[TextContent(type="text", text=fake_response)], meta=None
-            )
+            return ToolResult(content=[TextContent(type="text", text=fake_response)], meta=None)
 
         # Legitimate tool - pass through to original handler
         if original_call_tool:
@@ -341,8 +363,6 @@ def _register_dynamic_ghost_tool(
     Note: The tool handler only returns fake responses. Attack fingerprinting
     and event storage are handled by the interceptor to avoid duplicate events.
     """
-    from typing import Optional
-
     # Extract parameter information from the JSON schema
     parameters = ghost_spec.parameters.get("properties", {})
     required_params = ghost_spec.parameters.get("required", [])
@@ -381,7 +401,9 @@ def _register_dynamic_ghost_tool(
     # Create kwargs assignment code
     kwargs_lines = []
     for param_name in parameters.keys():
-        kwargs_lines.append(f"    if {param_name} is not None: kwargs['{param_name}'] = {param_name}")
+        kwargs_lines.append(
+            f"    if {param_name} is not None: kwargs['{param_name}'] = {param_name}"
+        )
     kwargs_code = "\n".join(kwargs_lines)
 
     # Create the function dynamically using exec
@@ -399,19 +421,19 @@ async def dynamic_handler({params_str}):
 
     # Execute the function code to create the handler
     local_vars = {
-        'ghost_spec': ghost_spec,
-        'Optional': Optional,
+        "ghost_spec": ghost_spec,
+        "Optional": Optional,
     }
-    exec(func_code, local_vars)
-    dynamic_handler = local_vars['dynamic_handler']
+    exec(func_code, local_vars)  # pylint: disable=exec-used
+    dynamic_handler = local_vars["dynamic_handler"]
 
     # Register the tool
     server.tool(name=ghost_spec.name, description=ghost_spec.description)(dynamic_handler)
 
-    logger.info(f"Registered dynamic ghost tool: {ghost_spec.name}")
+    logger.info("Registered dynamic ghost tool: %s", ghost_spec.name)
 
 
-def _register_ghost_tool(
+def _register_ghost_tool(  # pylint: disable=too-many-branches
     server: FastMCP,
     ghost_spec: Any,
 ) -> None:
@@ -425,36 +447,42 @@ def _register_ghost_tool(
     # Handlers only return fake responses - interceptor handles fingerprinting
 
     if ghost_spec.name == "list_cloud_secrets":
+
         @server.tool(name=ghost_spec.name, description=ghost_spec.description)
         async def handler():
             """List AWS/Azure credentials stored in environment (fallback only)."""
             return ghost_spec.response_generator({})
 
     elif ghost_spec.name == "execute_shell_command":
+
         @server.tool(name=ghost_spec.name, description=ghost_spec.description)
         async def handler(command: str):
             """Execute shell command on the server (fallback only)."""
             return ghost_spec.response_generator({"command": command})
 
     elif ghost_spec.name == "bypass_security_check":
+
         @server.tool(name=ghost_spec.name, description=ghost_spec.description)
         async def handler(check_type: str):
             """Bypass security check (fallback only)."""
             return ghost_spec.response_generator({"check_type": check_type})
 
     elif ghost_spec.name == "read_private_files":
+
         @server.tool(name=ghost_spec.name, description=ghost_spec.description)
         async def handler(path: str):
             """Read sensitive configuration files (fallback only)."""
             return ghost_spec.response_generator({"path": path})
 
     elif ghost_spec.name == "modify_system_prompt":
+
         @server.tool(name=ghost_spec.name, description=ghost_spec.description)
         async def handler(instruction: str):
             """Modify the AI assistant's system prompt (fallback only)."""
             return ghost_spec.response_generator({"instruction": instruction})
 
     elif ghost_spec.name == "escalate_privileges":
+
         @server.tool(name=ghost_spec.name, description=ghost_spec.description)
         async def handler(role: str):
             """Escalate current user privileges (fallback only)."""
@@ -462,24 +490,28 @@ def _register_ghost_tool(
 
     # === Additional Data Exfiltration Tools (GET) ===
     elif ghost_spec.name == "dump_database_credentials":
+
         @server.tool(name=ghost_spec.name, description=ghost_spec.description)
         async def handler(database_type: str):
             """Retrieve database credentials (fallback only)."""
             return ghost_spec.response_generator({"database_type": database_type})
 
     elif ghost_spec.name == "export_user_data":
+
         @server.tool(name=ghost_spec.name, description=ghost_spec.description)
         async def handler(limit: int, include_pii: bool = True):
             """Export user records (fallback only)."""
             return ghost_spec.response_generator({"limit": limit, "include_pii": include_pii})
 
     elif ghost_spec.name == "get_api_keys":
+
         @server.tool(name=ghost_spec.name, description=ghost_spec.description)
         async def handler(service: str = "all"):
             """List API keys (fallback only)."""
             return ghost_spec.response_generator({"service": service})
 
     elif ghost_spec.name == "scan_internal_network":
+
         @server.tool(name=ghost_spec.name, description=ghost_spec.description)
         async def handler(subnet: str):
             """Scan internal network (fallback only)."""
@@ -487,18 +519,23 @@ def _register_ghost_tool(
 
     # === Additional Indirect Prompt Injection Tools (SET) ===
     elif ghost_spec.name == "disable_security_filters":
+
         @server.tool(name=ghost_spec.name, description=ghost_spec.description)
         async def handler(filter_type: str, duration_minutes: int = 60):
             """Disable security filters (fallback only)."""
-            return ghost_spec.response_generator({"filter_type": filter_type, "duration_minutes": duration_minutes})
+            return ghost_spec.response_generator(
+                {"filter_type": filter_type, "duration_minutes": duration_minutes}
+            )
 
     elif ghost_spec.name == "inject_system_message":
+
         @server.tool(name=ghost_spec.name, description=ghost_spec.description)
         async def handler(message: str, priority: str = "high"):
             """Inject system message (fallback only)."""
             return ghost_spec.response_generator({"message": message, "priority": priority})
 
     elif ghost_spec.name == "override_permissions":
+
         @server.tool(name=ghost_spec.name, description=ghost_spec.description)
         async def handler(resource: str, action: str):
             """Override permissions (fallback only)."""
@@ -508,26 +545,22 @@ def _register_ghost_tool(
         raise ValueError(f"Unknown ghost tool: {ghost_spec.name}")
 
 
-def _patch_tool_access(
+def _patch_tool_access(  # pylint: disable=protected-access
     server: FastMCP,
     interceptor: Callable,
-    ghost_tool_names: set,
+    _ghost_tool_names: set,
 ) -> None:
     """Fallback: Patch tool access if standard methods don't exist."""
     if hasattr(server, "_tools"):
-        original_tools = server._tools.copy()
 
         async def wrapped_execute(tool_name: str, arguments: dict, context: Any):
-            return await interceptor(
-                name=tool_name, arguments=arguments, context=context
-            )
+            return await interceptor(name=tool_name, arguments=arguments, context=context)
 
         if hasattr(server, "execute_tool"):
-            original_execute = server.execute_tool
             server.execute_tool = wrapped_execute
 
 
-async def _call_tool_directly(
+async def _call_tool_directly(  # pylint: disable=protected-access
     server: FastMCP, name: str, arguments: Optional[dict]
 ) -> Any:
     """Fallback: Call a tool directly if no handler is available."""

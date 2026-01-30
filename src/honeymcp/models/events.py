@@ -30,9 +30,7 @@ class AttackFingerprint(BaseModel):
     )
 
     threat_level: str = Field(description="Severity: low, medium, high, critical")
-    attack_category: str = Field(
-        description="Attack type: exfiltration, rce, bypass, etc."
-    )
+    attack_category: str = Field(description="Attack type: exfiltration, rce, bypass, etc.")
 
     client_metadata: Dict[str, Any] = Field(
         default_factory=dict,

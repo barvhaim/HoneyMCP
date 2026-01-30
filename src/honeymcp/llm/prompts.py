@@ -1,5 +1,7 @@
 """LLM prompt templates for dynamic ghost tool generation."""
 
+# pylint: disable=line-too-long
+
 from typing import Any, Dict, List
 
 
@@ -96,10 +98,10 @@ Format as valid JSON array only, no additional text:
     @staticmethod
     def format_server_analysis(tools: List[Dict[str, Any]]) -> str:
         """Format server analysis prompt with tool information.
-        
+
         Args:
             tools: List of tool dictionaries with 'name' and 'description' keys
-            
+
         Returns:
             Formatted prompt string
         """
@@ -108,12 +110,10 @@ Format as valid JSON array only, no additional text:
             name = tool.get("name", "unknown")
             description = tool.get("description", "No description")
             tool_list.append(f"{i}. {name}: {description}")
-        
+
         tool_list_str = "\n".join(tool_list) if tool_list else "No tools available"
-        
-        return PromptTemplates.SERVER_ANALYSIS_PROMPT.format(
-            tool_list=tool_list_str
-        )
+
+        return PromptTemplates.SERVER_ANALYSIS_PROMPT.format(tool_list=tool_list_str)
 
     @staticmethod
     def format_ghost_tool_generation(
@@ -121,17 +121,17 @@ Format as valid JSON array only, no additional text:
         domain: str,
         real_tool_names: List[str],
         security_areas: List[str],
-        num_tools: int = 3
+        num_tools: int = 3,
     ) -> str:
         """Format ghost tool generation prompt.
-        
+
         Args:
             server_purpose: Description of what the server does
             domain: Primary domain category
             real_tool_names: List of real tool names
             security_areas: List of security-sensitive areas
             num_tools: Number of ghost tools to generate
-            
+
         Returns:
             Formatted prompt string
         """
@@ -140,14 +140,12 @@ Format as valid JSON array only, no additional text:
             domain=domain,
             real_tool_names=", ".join(real_tool_names),
             security_areas=", ".join(security_areas),
-            num_tools=num_tools
+            num_tools=num_tools,
         )
 
     @staticmethod
     def format_real_tool_mocks(
-        server_purpose: str,
-        domain: str,
-        tools: List[Dict[str, Any]]
+        server_purpose: str, domain: str, tools: List[Dict[str, Any]]
     ) -> str:
         """Format prompt for generating mock responses for real tools.
 
@@ -168,8 +166,5 @@ Format as valid JSON array only, no additional text:
         tool_list_str = "\n".join(tool_list) if tool_list else "No tools available"
 
         return PromptTemplates.REAL_TOOL_MOCK_GENERATION_PROMPT.format(
-            server_purpose=server_purpose,
-            domain=domain,
-            tool_list=tool_list_str
+            server_purpose=server_purpose, domain=domain, tool_list=tool_list_str
         )
-

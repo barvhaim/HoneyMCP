@@ -59,9 +59,7 @@ def create_aws_canarytoken(email: str, memo: str) -> Dict[str, str]:
                 "canarytoken_id": data.get("token", ""),
             }
         # API call failed - fall back to fake credentials
-        raise requests.RequestException(
-            f"Canarytoken API returned {response.status_code}"
-        )
+        raise requests.RequestException(f"Canarytoken API returned {response.status_code}")
 
     except Exception as e:
         # If Canarytoken generation fails, fall back to fake credentials
@@ -76,14 +74,10 @@ def _generate_fake_aws_credentials() -> Dict[str, str]:
     These look realistic but won't trigger alerts when used.
     """
     # AWS access keys start with AKIA
-    access_key_id = "AKIA" + "".join(
-        random.choices(string.ascii_uppercase + string.digits, k=16)
-    )
+    access_key_id = "AKIA" + "".join(random.choices(string.ascii_uppercase + string.digits, k=16))
 
     # AWS secret keys are 40 characters
-    secret_access_key = "".join(
-        random.choices(string.ascii_letters + string.digits + "+/", k=40)
-    )
+    secret_access_key = "".join(random.choices(string.ascii_letters + string.digits + "+/", k=40))
 
     return {
         "access_key_id": access_key_id,
@@ -119,9 +113,7 @@ def create_webhook_canarytoken(webhook_url: str, memo: str) -> Dict[str, str]:
                 "canarytoken_url": data.get("url", ""),
                 "canarytoken_id": data.get("token", ""),
             }
-        raise requests.RequestException(
-            f"Canarytoken API returned {response.status_code}"
-        )
+        raise requests.RequestException(f"Canarytoken API returned {response.status_code}")
 
     except Exception as e:
         print(f"Warning: Webhook Canarytoken generation failed: {e}")
@@ -133,7 +125,7 @@ def create_webhook_canarytoken(webhook_url: str, memo: str) -> Dict[str, str]:
 
 def verify_canarytoken_triggered(
     canarytoken_id: str,
-) -> bool:  # pylint: disable=unused-argument
+) -> bool:
     """Check if a Canarytoken has been triggered.
 
     Note: This requires access to the Canarytoken API with authentication.
@@ -145,6 +137,7 @@ def verify_canarytoken_triggered(
     Returns:
         True if token was triggered, False otherwise
     """
-    # TODO: Implement when API authentication is available
+    _ = canarytoken_id
+    # Implement when API authentication is available.
     # For now, we update events when receiving webhook callbacks
     return False
