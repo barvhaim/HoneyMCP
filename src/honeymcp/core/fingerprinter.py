@@ -3,8 +3,8 @@
 from datetime import datetime
 from uuid import uuid4
 from typing import Any, Dict, List, Optional
-from ..models.events import AttackFingerprint
-from ..models.ghost_tool_spec import GhostToolSpec
+from honeymcp.models.events import AttackFingerprint
+from honeymcp.models.ghost_tool_spec import GhostToolSpec
 
 # Global session state tracking
 _session_tool_history: Dict[str, List[str]] = {}

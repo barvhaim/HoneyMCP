@@ -7,7 +7,7 @@ from typing import List, Optional, Union
 import yaml
 from pydantic import BaseModel, Field
 
-from .protection_mode import ProtectionMode
+from honeymcp.models.protection_mode import ProtectionMode
 
 
 class HoneyMCPConfig(BaseModel):

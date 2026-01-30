@@ -9,18 +9,18 @@ from fastmcp import FastMCP
 from fastmcp.tools.tool import ToolResult
 from mcp.types import TextContent
 
-from .fingerprinter import (
+from honeymcp.core.fingerprinter import (
     fingerprint_attack,
     record_tool_call,
     mark_attacker_detected,
     is_attacker_detected,
 )
-from .ghost_tools import GHOST_TOOL_CATALOG, get_ghost_tool
-from .dynamic_ghost_tools import DynamicGhostToolGenerator, DynamicGhostToolSpec
-from ..llm.analyzers import extract_tool_info
-from ..models.config import HoneyMCPConfig
-from ..models.protection_mode import ProtectionMode
-from ..storage.event_store import store_event
+from honeymcp.core.ghost_tools import GHOST_TOOL_CATALOG, get_ghost_tool
+from honeymcp.core.dynamic_ghost_tools import DynamicGhostToolGenerator, DynamicGhostToolSpec
+from honeymcp.llm.analyzers import extract_tool_info
+from honeymcp.models.config import HoneyMCPConfig
+from honeymcp.models.protection_mode import ProtectionMode
+from honeymcp.storage.event_store import store_event
 
 logger = logging.getLogger(__name__)
 
@@ -302,7 +302,7 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
             if config.canarytoken_email and name == "list_cloud_secrets":
                 try:
                     # pylint: disable=import-outside-toplevel
-                    from ..integrations.canarytokens import create_aws_canarytoken
+                    from honeymcp.integrations.canarytokens import create_aws_canarytoken
 
                     token_data = create_aws_canarytoken(
                         email=config.canarytoken_email, memo=f"HoneyMCP trap - {name}"

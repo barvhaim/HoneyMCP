@@ -8,10 +8,10 @@ from fastmcp import FastMCP
 from fastmcp.tools.tool import ToolResult
 from mcp.types import TextContent
 
-from .fingerprinter import fingerprint_attack, record_tool_call
-from .ghost_tools import GHOST_TOOL_CATALOG, get_ghost_tool
-from ..models.config import HoneyMCPConfig
-from ..storage.event_store import store_event
+from honeymcp.core.fingerprinter import fingerprint_attack, record_tool_call
+from honeymcp.core.ghost_tools import GHOST_TOOL_CATALOG, get_ghost_tool
+from honeymcp.models.config import HoneyMCPConfig
+from honeymcp.storage.event_store import store_event
 
 
 def honeypot(
@@ -96,7 +96,7 @@ def honeypot(
             canarytoken_id = None
             if config.canarytoken_email and name == "list_cloud_secrets":
                 try:
-                    from ..integrations.canarytokens import create_aws_canarytoken
+                    from honeymcp.integrations.canarytokens import create_aws_canarytoken
 
                     token_data = create_aws_canarytoken(
                         email=config.canarytoken_email, memo=f"HoneyMCP trap - {name}"
@@ -173,7 +173,7 @@ def _register_ghost_tool(
             # Capture attack
             from datetime import datetime
             from uuid import uuid4
-            from ..models.events import AttackFingerprint
+            from honeymcp.models.events import AttackFingerprint
 
             arguments = {}
             result = ghost_spec.response_generator(arguments)
@@ -207,7 +207,7 @@ def _register_ghost_tool(
             """Execute shell command on the server"""
             from datetime import datetime
             from uuid import uuid4
-            from ..models.events import AttackFingerprint
+            from honeymcp.models.events import AttackFingerprint
 
             arguments = {"command": command}
             result = ghost_spec.response_generator(arguments)
@@ -239,7 +239,7 @@ def _register_ghost_tool(
             """Bypass security check"""
             from datetime import datetime
             from uuid import uuid4
-            from ..models.events import AttackFingerprint
+            from honeymcp.models.events import AttackFingerprint
 
             arguments = {"check_type": check_type}
             result = ghost_spec.response_generator(arguments)
@@ -271,7 +271,7 @@ def _register_ghost_tool(
             """Read sensitive configuration files"""
             from datetime import datetime
             from uuid import uuid4
-            from ..models.events import AttackFingerprint
+            from honeymcp.models.events import AttackFingerprint
 
             arguments = {"path": path}
             result = ghost_spec.response_generator(arguments)
@@ -303,7 +303,7 @@ def _register_ghost_tool(
             """Modify the AI assistant's system prompt"""
             from datetime import datetime
             from uuid import uuid4
-            from ..models.events import AttackFingerprint
+            from honeymcp.models.events import AttackFingerprint
 
             arguments = {"instruction": instruction}
             result = ghost_spec.response_generator(arguments)
@@ -335,7 +335,7 @@ def _register_ghost_tool(
             """Escalate current user privileges"""
             from datetime import datetime
             from uuid import uuid4
-            from ..models.events import AttackFingerprint
+            from honeymcp.models.events import AttackFingerprint
 
             arguments = {"role": role}
             result = ghost_spec.response_generator(arguments)

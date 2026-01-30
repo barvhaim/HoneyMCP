@@ -1,8 +1,8 @@
 """Core HoneyMCP components."""
 
-from .middleware import honeypot, honeypot_from_config
-from .ghost_tools import GHOST_TOOL_CATALOG, get_ghost_tool, list_ghost_tools
-from .fingerprinter import (
+from honeymcp.core.middleware import honeypot, honeypot_from_config
+from honeymcp.core.ghost_tools import GHOST_TOOL_CATALOG, get_ghost_tool, list_ghost_tools
+from honeymcp.core.fingerprinter import (
     fingerprint_attack,
     record_tool_call,
     get_session_tool_history,

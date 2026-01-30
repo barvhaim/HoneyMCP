@@ -19,8 +19,8 @@ The honeypot decorator injects fake security-sensitive tools that capture
 attack context when triggered, while allowing legitimate tools to work normally.
 """
 
-from .core import honeypot, honeypot_from_config
-from .models import AttackFingerprint, GhostToolSpec, HoneyMCPConfig, ProtectionMode
+from honeymcp.core import honeypot, honeypot_from_config
+from honeymcp.models import AttackFingerprint, GhostToolSpec, HoneyMCPConfig, ProtectionMode
 
 __version__ = "0.1.0"
 

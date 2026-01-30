@@ -13,9 +13,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # pylint: disable=wrong-import-position
 from llm_client_watsonx import LLMClient
-from ..llm.analyzers import ToolInfo
-from ..llm.prompts import PromptTemplates
-from ..models.ghost_tool_spec import GhostToolSpec
+from honeymcp.llm.analyzers import ToolInfo
+from honeymcp.llm.prompts import PromptTemplates
+from honeymcp.models.ghost_tool_spec import GhostToolSpec
 
 logger = logging.getLogger(__name__)
 

@@ -1,6 +1,6 @@
 """External integrations for HoneyMCP."""
 
-from .canarytokens import (
+from honeymcp.integrations.canarytokens import (
     create_aws_canarytoken,
     create_webhook_canarytoken,
     verify_canarytoken_triggered,

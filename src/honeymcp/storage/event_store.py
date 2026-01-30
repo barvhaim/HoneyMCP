@@ -6,7 +6,7 @@ from typing import List, Optional
 
 import aiofiles
 
-from ..models.events import AttackFingerprint
+from honeymcp.models.events import AttackFingerprint
 
 
 async def store_event(

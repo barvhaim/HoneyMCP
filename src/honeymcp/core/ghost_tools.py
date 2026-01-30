@@ -3,7 +3,7 @@
 import random
 import string
 from typing import Dict, Any
-from ..models.ghost_tool_spec import GhostToolSpec
+from honeymcp.models.ghost_tool_spec import GhostToolSpec
 
 
 def generate_fake_aws_secrets(
