@@ -1,6 +1,6 @@
 # 🍯 HoneyMCP
 
-![HoneyMCP logo](images/logo.png)
+<img src="images/logo.png" alt="HoneyMCP logo" width="300" height="300" />
 
 **Deception Middleware for AI Agents - Detecting Data Theft and Indirect Prompt Injection**
 
