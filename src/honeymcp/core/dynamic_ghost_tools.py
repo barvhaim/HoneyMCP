@@ -2,19 +2,13 @@
 
 import json
 import logging
-from pathlib import Path
-import sys
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
-# Add parent directory to path to import llm_client_watsonx
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-
-# pylint: disable=wrong-import-position
-from llm_client_watsonx import LLMClient
 from honeymcp.llm.analyzers import ToolInfo
-from honeymcp.llm.prompts import PromptTemplates
+from honeymcp.llm.clients import get_chat_llm_client
+from honeymcp.llm.prompts import format_prompt
 from honeymcp.models.ghost_tool_spec import GhostToolSpec
 
 logger = logging.getLogger(__name__)
@@ -62,9 +56,10 @@ class DynamicGhostToolGenerator:
 
     def __init__(
         self,
-        llm_client: Optional[LLMClient] = None,
+        llm_client: Optional[Any] = None,
         cache_ttl: int = 3600,
         model_name: Optional[str] = None,
+        model_parameters: Optional[Dict[str, Any]] = None,
     ):
         """Initialize the dynamic ghost tool generator.
 
@@ -72,11 +67,53 @@ class DynamicGhostToolGenerator:
             llm_client: LLM client instance (creates default if None)
             cache_ttl: Cache time-to-live in seconds
             model_name: Optional model name override
+            model_parameters: Optional model parameters for LLM client
         """
-        self.llm_client = llm_client or LLMClient(model_full_name=model_name)
+        self.llm_client = llm_client
+        self.model_name = model_name
+        self.model_parameters = model_parameters or {}
         self.cache_ttl = cache_ttl
         self._cache: Dict[str, Any] = {}
         self._cache_timestamps: Dict[str, datetime] = {}
+        self._client_cache: Dict[float, Any] = {}
+
+    def _get_llm_client(self, temperature: float) -> Any:
+        if self.llm_client is not None:
+            return self.llm_client
+
+        if temperature in self._client_cache:
+            return self._client_cache[temperature]
+
+        parameters = dict(self.model_parameters)
+        parameters["temperature"] = temperature
+        client = get_chat_llm_client(
+            model_name=self.model_name or "rits/openai/gpt-oss-120b",
+            model_parameters=parameters,
+        )
+        self._client_cache[temperature] = client
+        return client
+
+    @staticmethod
+    def _format_messages(messages: List[Dict[str, str]]) -> str:
+        parts: List[str] = []
+        for message in messages:
+            role = message.get("role", "user")
+            content = message.get("content", "")
+            if role == "system":
+                parts.append(f"System: {content}")
+            elif role == "assistant":
+                parts.append(f"Assistant: {content}")
+            else:
+                parts.append(content)
+        return "\n\n".join([part for part in parts if part])
+
+    def _generate_response(self, messages: List[Dict[str, str]], temperature: float) -> str:
+        client = self._get_llm_client(temperature)
+        prompt = self._format_messages(messages)
+        response = client.invoke(prompt)
+        if hasattr(response, "content"):
+            return str(response.content)
+        return str(response)
 
     async def analyze_server_context(self, real_tools: List[ToolInfo]) -> ServerContext:
         """Analyze the server's purpose and context using LLM.
@@ -98,15 +135,24 @@ class DynamicGhostToolGenerator:
 
         # Prepare tools for analysis
         tools_dict = [{"name": tool.name, "description": tool.description} for tool in real_tools]
+        tool_list = [
+            f"{i}. {tool['name']}: {tool['description']}"
+            for i, tool in enumerate(tools_dict, 1)
+        ]
+        tool_list_str = "\n".join(tool_list) if tool_list else "No tools available"
 
         # Format prompt
-        prompt = PromptTemplates.format_server_analysis(tools_dict)
+        prompt = format_prompt(
+            "server_analysis_prompt",
+            prompt_file="dynamic_ghost_tools",
+            tool_list=tool_list_str,
+        )
 
         # Call LLM
         logger.info("Analyzing server context with %s tools", len(real_tools))
         try:
             messages = [{"role": "user", "content": prompt}]
-            response = self.llm_client.generate_response(messages, temperature=0.3)
+            response = self._generate_response(messages, temperature=0.3)
 
             # Parse JSON response
             # Handle None response from LLM
@@ -178,11 +224,13 @@ class DynamicGhostToolGenerator:
             return self._cache[cache_key]
 
         # Format prompt
-        prompt = PromptTemplates.format_ghost_tool_generation(
+        prompt = format_prompt(
+            "ghost_tool_generation_prompt",
+            prompt_file="dynamic_ghost_tools",
             server_purpose=server_context.server_purpose,
             domain=server_context.domain,
-            real_tool_names=server_context.real_tool_names,
-            security_areas=server_context.security_sensitive_areas,
+            real_tool_names=", ".join(server_context.real_tool_names),
+            security_areas=", ".join(server_context.security_sensitive_areas),
             num_tools=num_tools,
         )
 
@@ -194,7 +242,7 @@ class DynamicGhostToolGenerator:
         )
         try:
             messages = [{"role": "user", "content": prompt}]
-            response = self.llm_client.generate_response(messages, temperature=0.7)
+            response = self._generate_response(messages, temperature=0.7)
 
             # Parse JSON response
             # Handle None response from LLM
@@ -336,19 +384,26 @@ class DynamicGhostToolGenerator:
 
         # Prepare tools for prompt
         tools_dict = [{"name": tool.name, "description": tool.description} for tool in real_tools]
+        tool_list = [
+            f"{i}. {tool['name']}: {tool['description']}"
+            for i, tool in enumerate(tools_dict, 1)
+        ]
+        tool_list_str = "\n".join(tool_list) if tool_list else "No tools available"
 
         # Format prompt
-        prompt = PromptTemplates.format_real_tool_mocks(
+        prompt = format_prompt(
+            "real_tool_mock_generation_prompt",
+            prompt_file="dynamic_ghost_tools",
             server_purpose=server_context.server_purpose,
             domain=server_context.domain,
-            tools=tools_dict,
+            tool_list=tool_list_str,
         )
 
         # Call LLM
         logger.info("Generating mock responses for %s real tools", len(real_tools))
         try:
             messages = [{"role": "user", "content": prompt}]
-            response = self.llm_client.generate_response(messages, temperature=0.5)
+            response = self._generate_response(messages, temperature=0.5)
 
             # Handle None response from LLM
             if response is None:

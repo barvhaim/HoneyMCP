@@ -166,10 +166,7 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
             logger.info("Initializing dynamic ghost tool generation")
 
             # Initialize LLM-based generator
-            from llm_client_watsonx import LLMClient  # pylint: disable=import-outside-toplevel
-
-            llm_client = LLMClient(model_full_name=llm_model)
-            generator = DynamicGhostToolGenerator(llm_client, cache_ttl=cache_ttl)
+            generator = DynamicGhostToolGenerator(cache_ttl=cache_ttl, model_name=llm_model)
 
             # Run async operations in event loop
             try:

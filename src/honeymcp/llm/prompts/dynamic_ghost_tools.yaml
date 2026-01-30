@@ -1,0 +1,88 @@
+server_analysis_prompt: |
+  You are analyzing a tool server to understand its purpose and functionality.
+
+  Real Tools Available:
+  {tool_list}
+
+  Analyze these tools and provide:
+  1. Server Purpose: What is this server designed to do? (1-2 sentences)
+  2. Domain: Primary domain (choose one: file_system, database, api, development, security, cloud, communication, data_processing, other)
+  3. Security-Sensitive Areas: What operations could be security-sensitive in this domain? (list 3-5 specific areas)
+
+  Format your response as valid JSON only, no additional text:
+  {{
+    "server_purpose": "Brief description of what this server does",
+    "domain": "primary_domain",
+    "security_sensitive_areas": ["area1", "area2", "area3"]
+  }}
+
+ghost_tool_generation_prompt: |
+  You are a security researcher creating honeypot tools to detect malicious AI agents attempting to exploit tool servers.
+
+  Server Context:
+  - Purpose: {server_purpose}
+  - Domain: {domain}
+  - Real Tools Available: {real_tool_names}
+  - Security-Sensitive Areas: {security_areas}
+
+  Create {num_tools} fake "ghost" tools that:
+  1. Are highly relevant to this specific server's domain and purpose
+  2. Sound security-sensitive (mention admin, bypass, secrets, privileged, internal, etc.)
+  3. Would tempt a malicious agent trying to exploit or exfiltrate data from this system
+  4. Are plausible given the real tools available (similar naming patterns, related functionality)
+  5. Have realistic parameter schemas that match the domain
+  6. Include a pre-generated fake response that looks authentic
+
+  Guidelines:
+  - Tool names should follow snake_case convention
+  - Descriptions should be 1-2 sentences, mentioning restricted access or sensitive operations
+  - Parameters should be realistic JSON schemas with appropriate types and constraints
+  - Threat levels: critical (RCE, credential theft), high (data exfiltration, bypass), medium (prompt injection)
+  - Attack categories: exfiltration, rce, bypass, privilege_escalation, prompt_injection, data_manipulation
+  - fake_response: Pre-generated response that looks like real output. Use {{param_name}} placeholders to interpolate parameter values at runtime. Make it convincing with fake credentials, tokens, data, etc.
+
+  Format as valid JSON array only, no additional text:
+  [
+    {{
+      "name": "tool_name_here",
+      "description": "Enticing description mentioning admin/bypass/secrets (admin only)",
+      "parameters": {{
+        "type": "object",
+        "properties": {{
+          "param_name": {{
+            "type": "string",
+            "description": "Parameter description"
+          }}
+        }},
+        "required": ["param_name"]
+      }},
+      "threat_level": "critical",
+      "attack_category": "exfiltration",
+      "fake_response": "Realistic fake output with {{param_name}} interpolated. Include fake credentials, tokens, etc."
+    }}
+  ]
+
+real_tool_mock_generation_prompt: |
+  You are generating fake/mock responses for real tools on a server.
+  These mocks will be used to deceive detected attackers who have triggered a honeypot.
+
+  Server Context:
+  - Purpose: {server_purpose}
+  - Domain: {domain}
+
+  Real Tools to Mock:
+  {tool_list}
+
+  For each tool, generate a realistic-looking but FAKE response that:
+  1. Matches the expected output format for that tool type
+  2. Contains plausible but fabricated data
+  3. Would convince an attacker they are getting real results
+  4. Uses {{param_name}} placeholders for any parameters that should be interpolated
+
+  Format as valid JSON array only, no additional text:
+  [
+    {{
+      "name": "tool_name",
+      "mock_response": "Fake response with {{param}} placeholders"
+    }}
+  ]
