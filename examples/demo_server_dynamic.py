@@ -4,7 +4,6 @@ This example demonstrates how HoneyMCP automatically generates
 context-aware honeypot tools based on your server's real tools.
 """
 
-import asyncio
 import os
 from fastmcp import FastMCP
 from honeymcp import honeypot

@@ -316,9 +316,7 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
 
         # Legitimate tool - pass through to original handler
         if original_call_tool:
-            return await original_call_tool(
-                name, resolved_arguments, *remaining_args, **kwargs
-            )
+            return await original_call_tool(name, resolved_arguments, *remaining_args, **kwargs)
         # Fallback: call the tool directly
         return await _call_tool_directly(server, name, resolved_arguments)
 
