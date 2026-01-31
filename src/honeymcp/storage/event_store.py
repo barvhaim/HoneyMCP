@@ -6,12 +6,13 @@ from typing import List, Optional
 
 import aiofiles
 
+from honeymcp.models.config import resolve_event_storage_path
 from honeymcp.models.events import AttackFingerprint
 
 
 async def store_event(
     fingerprint: AttackFingerprint,
-    storage_path: Path = Path.home() / ".honeymcp" / "events",
+    storage_path: Optional[Path] = None,
 ) -> Path:
     """Save attack event to JSON file.
 
@@ -24,6 +25,8 @@ async def store_event(
     Returns:
         Path to the created JSON file
     """
+    storage_path = resolve_event_storage_path(storage_path)
+
     # Create date-based directory structure
     date_dir = storage_path / fingerprint.timestamp.strftime("%Y-%m-%d")
     date_dir.mkdir(parents=True, exist_ok=True)
@@ -40,7 +43,7 @@ async def store_event(
 
 
 async def list_events(
-    storage_path: Path = Path.home() / ".honeymcp" / "events",
+    storage_path: Optional[Path] = None,
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
 ) -> List[AttackFingerprint]:
@@ -54,6 +57,7 @@ async def list_events(
     Returns:
         List of attack fingerprints sorted by timestamp (newest first)
     """
+    storage_path = resolve_event_storage_path(storage_path)
     if not storage_path.exists():
         return []
 
@@ -91,7 +95,7 @@ async def list_events(
 
 
 async def get_event(
-    event_id: str, storage_path: Path = Path.home() / ".honeymcp" / "events"
+    event_id: str, storage_path: Optional[Path] = None
 ) -> Optional[AttackFingerprint]:
     """Load a specific event by ID.
 
@@ -103,6 +107,7 @@ async def get_event(
         Attack fingerprint if found, None otherwise
     """
     # Search all date directories for the event
+    storage_path = resolve_event_storage_path(storage_path)
     if not storage_path.exists():
         return None
 
@@ -126,7 +131,7 @@ async def get_event(
 async def update_event(
     event_id: str,
     updates: dict,
-    storage_path: Path = Path.home() / ".honeymcp" / "events",
+    storage_path: Optional[Path] = None,
 ) -> bool:
     """Update an existing event.
 
@@ -139,6 +144,7 @@ async def update_event(
         True if event was found and updated, False otherwise
     """
     # Find the event file
+    storage_path = resolve_event_storage_path(storage_path)
     if not storage_path.exists():
         return False
 

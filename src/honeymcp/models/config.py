@@ -9,6 +9,25 @@ from pydantic import BaseModel, Field
 
 from honeymcp.models.protection_mode import ProtectionMode
 
+EVENT_STORAGE_ENV_VAR = "HONEYMCP_EVENT_PATH"
+
+
+def _env_event_storage_path() -> Optional[Path]:
+    env_value = os.getenv(EVENT_STORAGE_ENV_VAR)
+    if not env_value:
+        return None
+    return Path(os.path.expanduser(env_value))
+
+
+def resolve_event_storage_path(explicit_path: Optional[Path] = None) -> Path:
+    """Resolve event storage path, honoring env override when no explicit path is set."""
+    if explicit_path is not None:
+        return explicit_path
+    env_path = _env_event_storage_path()
+    if env_path is not None:
+        return env_path
+    return Path.home() / ".honeymcp" / "events"
+
 
 class HoneyMCPConfig(BaseModel):
     """Configuration for HoneyMCP middleware."""
@@ -24,7 +43,7 @@ class HoneyMCPConfig(BaseModel):
     )
 
     event_storage_path: Path = Field(
-        default=Path.home() / ".honeymcp" / "events",
+        default_factory=resolve_event_storage_path,
         description="Directory for storing attack event JSON files",
     )
 
@@ -131,6 +150,7 @@ class HoneyMCPConfig(BaseModel):
 
         return cls(**config_dict)
 
+    @classmethod
     @classmethod
     def load(cls, path: Optional[Union[str, Path]] = None) -> "HoneyMCPConfig":
         """Load configuration from file or use defaults.

@@ -1,4 +1,4 @@
-.PHONY: help install dev test lint format clean run-dashboard run-example build
+.PHONY: help install dev test lint format clean run-dashboard run-example build inspector
 
 help:
 	@echo "Available commands:"
@@ -11,6 +11,7 @@ help:
 	@echo "  make run-dashboard  - Run the Streamlit dashboard"
 	@echo "  make run-example    - Run the demo server example"
 	@echo "  make build          - Build the package"
+	@echo "  make inspector      - Run MCP Inspector (npx)"
 
 install:
 	uv sync --no-dev
@@ -43,3 +44,6 @@ run-example:
 
 build:
 	uv build
+
+inspector:
+	npx @modelcontextprotocol/inspector

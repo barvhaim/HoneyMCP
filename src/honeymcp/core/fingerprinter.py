@@ -82,14 +82,111 @@ async def fingerprint_attack(
     )
 
 
+def resolve_session_id(context: Any) -> str:
+    """Resolve or generate a session ID from MCP context."""
+    return _extract_session_id(context)
+
+
 def _extract_session_id(context: Any) -> str:
     """Extract session ID from MCP context."""
-    # Try different attributes that might contain session ID
+    # Try FastMCP HTTP helper (works even when request_context is missing)
+    try:
+        from fastmcp.server.dependencies import get_http_request
+
+        request = get_http_request()
+        if request is not None and hasattr(request, "query_params"):
+            try:
+                value = request.query_params.get("session_id")
+            except Exception:
+                value = None
+            if value:
+                return str(value)
+        if request is not None and hasattr(request, "headers"):
+            try:
+                value = request.headers.get("mcp-session-id")
+            except Exception:
+                value = None
+            if value:
+                return str(value)
+    except Exception:
+        pass
+
+    # Try FastMCP middleware context first
+    if hasattr(context, "fastmcp_context"):
+        fast_ctx = getattr(context, "fastmcp_context")
+        if fast_ctx is not None:
+            # Prefer HTTP query param session_id when present (e.g., /messages?session_id=...)
+            req_ctx = getattr(fast_ctx, "request_context", None)
+            if req_ctx is not None:
+                request = getattr(req_ctx, "request", None)
+                if request is not None and hasattr(request, "query_params"):
+                    try:
+                        value = request.query_params.get("session_id")
+                    except Exception:
+                        value = None
+                    if value:
+                        return str(value)
+                if request is not None and hasattr(request, "headers"):
+                    try:
+                        value = request.headers.get("mcp-session-id")
+                    except Exception:
+                        value = None
+                    if value:
+                        return str(value)
+
+            # Fall back to FastMCP context session_id if available
+            if hasattr(fast_ctx, "session_id"):
+                try:
+                    return str(fast_ctx.session_id)
+                except Exception:
+                    pass
+
+    # Try direct attributes on the context
     for attr in ["session_id", "id", "request_id", "connection_id"]:
         if hasattr(context, attr):
             value = getattr(context, attr)
             if value:
                 return str(value)
+
+    # Try dict-like contexts
+    if isinstance(context, dict):
+        for key in ["session_id", "id", "request_id", "connection_id"]:
+            value = context.get(key)
+            if value:
+                return str(value)
+
+    # Try request object for query/path params or headers (FastMCP/Starlette)
+    if hasattr(context, "request"):
+        request = getattr(context, "request")
+        if request is not None:
+            if hasattr(request, "query_params"):
+                qp = getattr(request, "query_params")
+                try:
+                    value = qp.get("session_id")
+                except Exception:
+                    value = None
+                if value:
+                    return str(value)
+            if hasattr(request, "path_params"):
+                pp = getattr(request, "path_params")
+                try:
+                    value = pp.get("session_id")
+                except Exception:
+                    value = None
+                if value:
+                    return str(value)
+            if hasattr(request, "headers"):
+                headers = getattr(request, "headers")
+                try:
+                    value = (
+                        headers.get("x-session-id")
+                        or headers.get("session-id")
+                        or headers.get("x-mcp-session-id")
+                    )
+                except Exception:
+                    value = None
+                if value:
+                    return str(value)
 
     # Fallback: generate a session ID
     return f"sess_{uuid4().hex[:12]}"
@@ -114,6 +211,46 @@ def _extract_conversation_history(context: Any) -> Optional[List[Dict]]:
 def _extract_client_metadata(context: Any) -> Dict[str, Any]:
     """Extract available client metadata from context."""
     metadata = {}
+
+    # Try FastMCP HTTP helper for request info
+    try:
+        from fastmcp.server.dependencies import get_http_request
+
+        request = get_http_request()
+        if request is not None:
+            if hasattr(request, "headers"):
+                try:
+                    metadata["headers"] = dict(request.headers)
+                except Exception:
+                    pass
+            if hasattr(request, "client") and request.client:
+                try:
+                    metadata["client_ip"] = request.client.host
+                    metadata["client_port"] = request.client.port
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    # FastMCP middleware context -> request info
+    if hasattr(context, "fastmcp_context"):
+        fast_ctx = getattr(context, "fastmcp_context")
+        if fast_ctx is not None:
+            req_ctx = getattr(fast_ctx, "request_context", None)
+            if req_ctx is not None:
+                request = getattr(req_ctx, "request", None)
+                if request is not None:
+                    if hasattr(request, "headers"):
+                        try:
+                            metadata["headers"] = dict(request.headers)
+                        except Exception:
+                            pass
+                    if hasattr(request, "client") and request.client:
+                        try:
+                            metadata["client_ip"] = request.client.host
+                            metadata["client_port"] = request.client.port
+                        except Exception:
+                            pass
 
     # Try to extract user agent
     if hasattr(context, "user_agent"):

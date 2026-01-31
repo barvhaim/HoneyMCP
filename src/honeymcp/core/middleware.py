@@ -14,11 +14,12 @@ from honeymcp.core.fingerprinter import (
     record_tool_call,
     mark_attacker_detected,
     is_attacker_detected,
+    resolve_session_id,
 )
 from honeymcp.core.ghost_tools import GHOST_TOOL_CATALOG, get_ghost_tool
 from honeymcp.core.dynamic_ghost_tools import DynamicGhostToolGenerator, DynamicGhostToolSpec
 from honeymcp.llm.analyzers import extract_tool_info
-from honeymcp.models.config import HoneyMCPConfig
+from honeymcp.models.config import HoneyMCPConfig, resolve_event_storage_path
 from honeymcp.models.protection_mode import ProtectionMode
 from honeymcp.storage.event_store import store_event
 
@@ -130,7 +131,7 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
         llm_model=llm_model,
         cache_ttl=cache_ttl,
         fallback_to_static=fallback_to_static,
-        event_storage_path=event_storage_path or Path.home() / ".honeymcp" / "events",
+        event_storage_path=resolve_event_storage_path(event_storage_path),
         enable_dashboard=enable_dashboard,
         protection_mode=protection_mode,
     )
@@ -241,7 +242,7 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
             remaining_args = remaining_args[1:]
         # Get or create session ID from context
         context = kwargs.get("context", {})
-        session_id = getattr(context, "session_id", "unknown")
+        session_id = resolve_session_id(context)
 
         # Record all tool calls for sequence tracking
         record_tool_call(session_id, name)
@@ -280,14 +281,6 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
 
         # Check if this is a ghost tool
         if name in ghost_tool_names:
-            # ATTACK DETECTED! Mark session as attacker
-            mark_attacker_detected(session_id)
-            logger.warning(
-                "ATTACK DETECTED: Ghost tool '%s' triggered (session: %s)",
-                name,
-                session_id,
-            )
-
             ghost_spec = (
                 get_ghost_tool(name)
                 if name in GHOST_TOOL_CATALOG
@@ -303,6 +296,21 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
                 arguments=resolved_arguments or {},
                 context=context,
                 ghost_spec=ghost_spec,
+            )
+
+            # ATTACK DETECTED! Mark session as attacker and log details
+            mark_attacker_detected(fingerprint.session_id)
+            logger.warning(
+                "ATTACK DETECTED: Ghost tool '%s' triggered (session: %s, event: %s, "
+                "threat: %s, category: %s, args: %s, client: %s, tool_seq: %s)",
+                name,
+                fingerprint.session_id,
+                fingerprint.event_id,
+                fingerprint.threat_level,
+                fingerprint.attack_category,
+                fingerprint.arguments,
+                fingerprint.client_metadata,
+                fingerprint.tool_call_sequence,
             )
 
             # Store event asynchronously
