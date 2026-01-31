@@ -6,6 +6,7 @@
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-green.svg)](https://opensource.org/licenses/Apache-2.0)
+[![PyPI](https://img.shields.io/pypi/v/honeymcp)](https://pypi.org/project/honeymcp/)
 
 HoneyMCP is a defensive security tool that adds deception capabilities to Model Context Protocol (MCP) servers. It injects "ghost tools" (fake security-sensitive tools) that act as honeypots, detecting two critical threat categories:
 

@@ -65,6 +65,7 @@ Homepage = "https://github.com/barvhaim/HoneyMCP"
 Documentation = "https://github.com/barvhaim/HoneyMCP#readme"
 Repository = "https://github.com/barvhaim/HoneyMCP"
 Issues = "https://github.com/barvhaim/HoneyMCP/issues"
+PyPI = "https://pypi.org/project/honeymcp/"
 
 [dependency-groups]
 dev = [
