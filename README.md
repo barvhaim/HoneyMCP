@@ -587,23 +587,6 @@ uv run pytest
 Notes:
 - Dynamic tool tests require LLM credentials and `LLM_MODEL` and will skip if env vars are missing.
 
-## 📅 Roadmap
-
-### v0.2.0 (Next Release)
-- [ ] Test suite with pytest
-- [ ] Support for other MCP frameworks (Python SDK, TypeScript SDK)
-- [ ] Webhook alerts for real-time notifications
-- [ ] Custom ghost tool definitions
-- [ ] Dashboard authentication
-
-### v0.3.0 (Future)
-- [ ] Machine learning-based attack pattern detection
-- [ ] Integration with SIEM systems
-- [ ] Multi-server dashboard aggregation
-- [ ] Threat intelligence feed export
-
----
-
 ## 📄 License
 
 Apache 2.0 - See [LICENSE](LICENSE) for details.
