@@ -27,13 +27,18 @@ HoneyMCP is a defensive security tool that adds deception capabilities to Model 
 ### Installation
 
 ```bash
-# Clone the repository
-git clone https://github.com/barvhaim/HoneyMCP.git
-cd HoneyMCP
-
-# Install dependencies
-uv sync
+pip install honeymcp
 ```
+
+### Initialize Configuration
+
+```bash
+honeymcp init
+```
+
+This creates:
+- `honeymcp.yaml` - Ghost tool configuration
+- `.env.honeymcp` - LLM credentials (only needed for dynamic ghost tools)
 
 ### Basic Usage
 
@@ -61,16 +66,24 @@ That's it! Your server now has ghost tools that capture attacks while legitimate
 
 ### Run the Demo Servers
 
+Clone the repo to run the demo servers:
+
+```bash
+git clone https://github.com/barvhaim/HoneyMCP.git
+cd HoneyMCP
+uv sync
+```
+
 Static ghost tools demo:
 
 ```bash
-MCP_TRANSPORT=stdio uv run python examples/demo_server.py
+MCP_TRANSPORT=sse uv run python examples/demo_server.py
 ```
 
-Dynamic ghost tools demo (requires LLM setup):
+Dynamic ghost tools demo (requires LLM credentials in `.env.honeymcp`):
 
 ```bash
-MCP_TRANSPORT=stdio uv run python examples/demo_server_dynamic.py
+MCP_TRANSPORT=sse uv run python examples/demo_server_dynamic.py
 ```
 
 ---
@@ -226,9 +239,17 @@ mcp = honeypot(mcp, protection_mode=ProtectionMode.COGNITIVE)
 
 ## 🔧 Configuration
 
-### Configuration File (Recommended)
+### Quick Setup with CLI
 
-Create a `config.yaml` file to configure HoneyMCP:
+The easiest way to configure HoneyMCP:
+
+```bash
+honeymcp init
+```
+
+This creates `honeymcp.yaml` and `.env.honeymcp` in your project directory.
+
+### Configuration File
 
 ```yaml
 # Protection mode: SCANNER (lockout) or COGNITIVE (deception)
@@ -313,15 +334,21 @@ HoneyMCP also supports environment overrides:
 
 ### LLM Setup (Dynamic Ghost Tools)
 
-Dynamic tools use a chat LLM client. Set `LLM_PROVIDER` and the provider-specific
-credentials in your `.env` (loaded automatically via `python-dotenv`):
+Dynamic ghost tools require LLM credentials. Run `honeymcp init` to generate `.env.honeymcp`, then add your credentials:
 
-- `LLM_PROVIDER=watsonx`: `WATSONX_API_ENDPOINT`, `WATSONX_PROJECT_ID`, `WATSONX_API_KEY`
-- `LLM_PROVIDER=openai`: `OPENAI_API_KEY`
-- `LLM_PROVIDER=rits`: `RITS_API_BASE_URL`, `RITS_API_KEY`
+```bash
+# .env.honeymcp
+LLM_PROVIDER=openai
+LLM_MODEL=gpt-4o-mini
+OPENAI_API_KEY=your_api_key_here
+```
 
-Select the model via `dynamic_tools.llm_model` in `config.yaml` or
-`honeypot(..., llm_model="...")`.
+Supported providers:
+- `LLM_PROVIDER=openai`: Requires `OPENAI_API_KEY`
+- `LLM_PROVIDER=watsonx`: Requires `WATSONX_URL`, `WATSONX_APIKEY`, `WATSONX_PROJECT_ID`
+- `LLM_PROVIDER=ollama`: Requires `OLLAMA_API_BASE` (default: `http://localhost:11434`)
+
+HoneyMCP loads `.env.honeymcp` first, then falls back to `.env`. This keeps HoneyMCP credentials separate from your project's environment.
 
 ### Full Configuration
 
@@ -349,7 +376,7 @@ mcp = honeypot(
 ```
 
 **Dynamic vs Static Tools:**
-- **Dynamic** (default): LLM analyzes your server and generates relevant honeypots (requires LLM credentials in `.env`)
+- **Dynamic** (default): LLM analyzes your server and generates relevant honeypots (requires LLM credentials in `.env.honeymcp`)
 - **Static**: Pre-defined generic tools (no LLM required, set `use_dynamic_tools=False`)
 
 ---
@@ -544,7 +571,39 @@ Demonstrate security controls for AI systems:
 
 ---
 
+## 💻 CLI Reference
+
+HoneyMCP includes a command-line tool for setup and management.
+
+### Initialize Configuration
+
+```bash
+honeymcp init [--directory DIR] [--force]
+```
+
+Creates `honeymcp.yaml` and `.env.honeymcp` in the target directory.
+
+Options:
+- `-d, --directory` - Target directory (default: current directory)
+- `-f, --force` - Overwrite existing files
+
+### Show Version
+
+```bash
+honeymcp version
+```
+
+---
+
 ## 🛠️ Development
+
+### Install from Source
+
+```bash
+git clone https://github.com/barvhaim/HoneyMCP.git
+cd HoneyMCP
+uv sync
+```
 
 ### Project Structure
 
@@ -552,6 +611,7 @@ Demonstrate security controls for AI systems:
 HoneyMCP/
 ├── src/honeymcp/
 │   ├── __init__.py              # Main exports
+│   ├── cli.py                   # CLI (honeymcp init, version)
 │   ├── core/
 │   │   ├── middleware.py        # @honeypot decorator
 │   │   ├── ghost_tools.py       # Ghost tool catalog
@@ -585,7 +645,7 @@ uv run pytest
 ```
 
 Notes:
-- Dynamic tool tests require LLM credentials and `LLM_MODEL` and will skip if env vars are missing.
+- Dynamic tool tests require LLM credentials in `.env.honeymcp` and will skip if env vars are missing.
 
 ## 📄 License
 

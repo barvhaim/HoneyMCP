@@ -57,6 +57,9 @@ dependencies = [
     "mcp>=1.25.0",
 ]
 
+[project.scripts]
+honeymcp = "honeymcp.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/barvhaim/HoneyMCP"
 Documentation = "https://github.com/barvhaim/HoneyMCP#readme"

@@ -1,11 +1,18 @@
 """LLM client module for different providers."""
 
 import os
+from pathlib import Path
 from typing import Dict, Optional, Any
 from dotenv import load_dotenv
 from honeymcp.llm.clients.provider_type import LLMProviderType
 
-load_dotenv()
+# Load .env.honeymcp first (if exists), then .env as fallback
+# This allows honeymcp-specific config without interfering with project's .env
+_honeymcp_env = Path.cwd() / ".env.honeymcp"
+if _honeymcp_env.exists():
+    load_dotenv(_honeymcp_env)
+else:
+    load_dotenv()  # Fall back to .env
 
 LLM_PROVIDER = LLMProviderType(os.getenv("LLM_PROVIDER", LLMProviderType.WATSONX.value))
 
