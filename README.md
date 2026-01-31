@@ -59,6 +59,20 @@ if __name__ == "__main__":
 
 That's it! Your server now has ghost tools that capture attacks while legitimate tools work normally.
 
+### Run the Demo Servers
+
+Static ghost tools demo:
+
+```bash
+MCP_TRANSPORT=stdio uv run python examples/demo_server.py
+```
+
+Dynamic ghost tools demo (requires LLM setup):
+
+```bash
+MCP_TRANSPORT=stdio uv run python examples/demo_server_dynamic.py
+```
+
 ---
 
 ## 🎭 How It Works
@@ -80,7 +94,7 @@ HoneyMCP injects fake security-sensitive tools into your MCP server that appear 
 - `bypass_security_check` - Returns fake bypass tokens
 - `read_private_files` - Returns fake .env files
 
-Dynamic tools are more convincing as they match your server's context. See [Dynamic Ghost Tools docs](docs/dynamic_ghost_tools.md) for details.
+Dynamic tools are more convincing as they match your server's context.
 
 ### 2. Attack Detection
 
@@ -140,7 +154,7 @@ streamlit run src/honeymcp/dashboard/app.py
 - 🕐 Real-time event feed with full context
 - 🔍 Tool call sequence visualization
 
-![Dashboard Preview](docs/dashboard-preview.png)
+The dashboard reads event JSON files from your configured event storage path.
 
 ---
 
@@ -291,6 +305,24 @@ mcp = honeypot(
 )
 ```
 
+### Environment Overrides
+
+HoneyMCP also supports environment overrides:
+
+- `HONEYMCP_EVENT_PATH` - overrides the base event storage directory
+
+### LLM Setup (Dynamic Ghost Tools)
+
+Dynamic tools use a chat LLM client. Set `LLM_PROVIDER` and the provider-specific
+credentials in your `.env` (loaded automatically via `python-dotenv`):
+
+- `LLM_PROVIDER=watsonx`: `WATSONX_API_ENDPOINT`, `WATSONX_PROJECT_ID`, `WATSONX_API_KEY`
+- `LLM_PROVIDER=openai`: `OPENAI_API_KEY`
+- `LLM_PROVIDER=rits`: `RITS_API_BASE_URL`, `RITS_API_KEY`
+
+Select the model via `dynamic_tools.llm_model` in `config.yaml` or
+`honeypot(..., llm_model="...")`.
+
 ### Full Configuration
 
 ```python
@@ -320,8 +352,6 @@ mcp = honeypot(
 - **Dynamic** (default): LLM analyzes your server and generates relevant honeypots (requires LLM credentials in `.env`)
 - **Static**: Pre-defined generic tools (no LLM required, set `use_dynamic_tools=False`)
 
-See [Dynamic Ghost Tools documentation](docs/dynamic_ghost_tools.md) for setup and advanced usage.
-
 ---
 
 ## 🧪 Testing with Claude Desktop
@@ -334,14 +364,18 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ```json
 {
-  "mcpServers": {
-    "honeymcp-demo": {
-      "command": "uv",
-      "args": ["run", "python", "/path/to/HoneyMCP/examples/demo_server.py"]
+    "mcpServers": {
+      "honeymcp-demo": {
+        "command": "uv",
+        "args": ["run", "python", "/path/to/HoneyMCP/examples/demo_server.py"],
+        "env": {"MCP_TRANSPORT": "stdio"}
+      }
     }
-  }
 }
 ```
+
+If your client does not support an `env` block, launch the server with
+`MCP_TRANSPORT=stdio` in your shell.
 
 **For Streamable HTTP transport (requires Claude Pro/Max/Team/Enterprise):**
 
@@ -522,22 +556,36 @@ HoneyMCP/
 │   │   ├── middleware.py        # @honeypot decorator
 │   │   ├── ghost_tools.py       # Ghost tool catalog
 │   │   ├── fingerprinter.py     # Attack context capture
-│   │   └── interceptor.py       # Tool call interception
+│   │   └── dynamic_ghost_tools.py# LLM-driven ghost tool generation
 │   ├── models/
 │   │   ├── events.py            # AttackFingerprint model
 │   │   ├── ghost_tool_spec.py   # GhostToolSpec definition
 │   │   └── config.py            # Configuration
+│   ├── llm/
+│   │   ├── analyzers.py          # Tool extraction and categorization
+│   │   ├── clients/              # LLM providers (Watsonx/OpenAI/RITS)
+│   │   └── prompts/              # Prompt templates
 │   ├── integrations/            # External integrations
 │   ├── storage/
 │   │   └── event_store.py       # JSON event persistence
 │   └── dashboard/
 │       └── app.py               # Streamlit dashboard
 ├── examples/
-│   └── demo_server.py           # Demo MCP server
-├── tests/                       # Test suite (TODO)
+│   ├── demo_server.py           # Static ghost tools demo
+│   └── demo_server_dynamic.py   # Dynamic ghost tools demo
+├── tests/                       # Pytest suite (e2e + dynamic tools)
 ├── pyproject.toml               # Dependencies
 └── README.md                    # This file
 ```
+
+### Tests
+
+```bash
+uv run pytest
+```
+
+Notes:
+- Dynamic tool tests require LLM credentials and `LLM_MODEL` and will skip if env vars are missing.
 
 ## 📅 Roadmap
 
