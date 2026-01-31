@@ -1,6 +1,6 @@
 [project]
 name = "honeymcp"
-version = "0.1.1"
+version = "0.1.2"
 description = "Deception middleware for AI agents - detecting data theft and indirect prompt injection in MCP servers"
 readme = "README.md"
 requires-python = ">=3.11"
