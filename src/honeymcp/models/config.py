@@ -23,11 +23,6 @@ class HoneyMCPConfig(BaseModel):
         description="Protection mode: SCANNER (lockout) or COGNITIVE (deception)",
     )
 
-    canarytoken_email: Optional[str] = Field(
-        default=None,
-        description="Email for Canarytoken alerts (enables real trap credentials)",
-    )
-
     event_storage_path: Path = Field(
         default=Path.home() / ".honeymcp" / "events",
         description="Directory for storing attack event JSON files",
@@ -119,8 +114,6 @@ class HoneyMCPConfig(BaseModel):
 
         # Alerting section
         alerting = data.get("alerting", {})
-        if "canarytoken_email" in alerting and alerting["canarytoken_email"]:
-            config_dict["canarytoken_email"] = alerting["canarytoken_email"]
         if "webhook_url" in alerting and alerting["webhook_url"]:
             config_dict["webhook_url"] = alerting["webhook_url"]
 

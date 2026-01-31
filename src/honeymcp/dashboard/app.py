@@ -124,8 +124,8 @@ def main():  # pylint: disable=too-many-branches,too-many-statements
         st.metric("Critical Threats", critical_count)
 
     with col3:
-        exfil_count = len([e for e in events if e.exfiltration_confirmed])
-        st.metric("Confirmed Exfiltrations", exfil_count)
+        unique_tools = len(set(e.ghost_tool_called for e in events)) if events else 0
+        st.metric("Unique Ghost Tools", unique_tools)
 
     with col4:
         if events:
@@ -178,9 +178,6 @@ def main():  # pylint: disable=too-many-branches,too-many-statements
                 f"Threat: {event.threat_level.upper()}"
             )
 
-            if event.exfiltration_confirmed:
-                header += " | ⚠️ **EXFILTRATION CONFIRMED**"
-
             with st.expander(header):
                 # Event details
                 col1, col2 = st.columns(2)
@@ -192,13 +189,6 @@ def main():  # pylint: disable=too-many-branches,too-many-statements
                     st.text(f"Session ID: {event.session_id}")
                     st.text(f"Threat Level: {event.threat_level}")
                     st.text(f"Category: {event.attack_category}")
-
-                    if event.canarytoken_id:
-                        st.text(f"Canarytoken: {event.canarytoken_id}")
-                        exfil_status = (
-                            "✅ Confirmed" if event.exfiltration_confirmed else "⏳ Pending"
-                        )
-                        st.text(f"Exfiltration: {exfil_status}")
 
                 with col2:
                     st.markdown("**Tool Call Sequence**")

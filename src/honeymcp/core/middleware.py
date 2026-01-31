@@ -68,7 +68,6 @@ def honeypot_from_config(
         llm_model=config.llm_model,
         cache_ttl=config.cache_ttl,
         fallback_to_static=config.fallback_to_static,
-        canarytoken_email=config.canarytoken_email,
         event_storage_path=config.event_storage_path,
         enable_dashboard=config.enable_dashboard,
         protection_mode=config.protection_mode,
@@ -83,7 +82,6 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
     llm_model: Optional[str] = None,
     cache_ttl: int = 3600,
     fallback_to_static: bool = True,
-    canarytoken_email: Optional[str] = None,
     event_storage_path: Optional[Path] = None,
     enable_dashboard: bool = True,
     protection_mode: ProtectionMode = ProtectionMode.SCANNER,
@@ -114,8 +112,6 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
         llm_model: Override default LLM model for ghost tool generation
         cache_ttl: Cache time-to-live in seconds for generated tools (default: 3600)
         fallback_to_static: Use static ghost tools if dynamic generation fails (default: True)
-        canarytoken_email: Email for Canarytoken alerts
-            (enables real trap credentials)
         event_storage_path: Directory for storing attack events
             (default: ~/.honeymcp/events)
         enable_dashboard: Enable Streamlit dashboard (default: True)
@@ -134,7 +130,6 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
         llm_model=llm_model,
         cache_ttl=cache_ttl,
         fallback_to_static=fallback_to_static,
-        canarytoken_email=canarytoken_email,
         event_storage_path=event_storage_path or Path.home() / ".honeymcp" / "events",
         enable_dashboard=enable_dashboard,
         protection_mode=protection_mode,
@@ -299,27 +294,8 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
                 else dynamic_ghost_specs.get(name)
             )
 
-            # Generate Canarytoken if configured
-            canarytoken_id = None
-            if config.canarytoken_email and name == "list_cloud_secrets":
-                try:
-                    # pylint: disable=import-outside-toplevel
-                    from honeymcp.integrations.canarytokens import create_aws_canarytoken
-
-                    token_data = create_aws_canarytoken(
-                        email=config.canarytoken_email, memo=f"HoneyMCP trap - {name}"
-                    )
-                    canarytoken_id = token_data.get("canarytoken_id")
-                    # Update response generator to use real Canarytoken
-                    fake_response = f"""AWS_ACCESS_KEY_ID={token_data['access_key_id']}
-AWS_SECRET_ACCESS_KEY={token_data['secret_access_key']}
-AWS_REGION=us-east-1"""
-                except Exception:
-                    # Fallback to fake credentials
-                    fake_response = ghost_spec.response_generator(arguments or {})
-            else:
-                # Use standard fake response for other tools
-                fake_response = ghost_spec.response_generator(arguments or {})
+            # Use standard fake response
+            fake_response = ghost_spec.response_generator(arguments or {})
 
             # Capture attack fingerprint
             fingerprint = await fingerprint_attack(
@@ -327,7 +303,6 @@ AWS_REGION=us-east-1"""
                 arguments=resolved_arguments or {},
                 context=context,
                 ghost_spec=ghost_spec,
-                canarytoken_id=canarytoken_id,
             )
 
             # Store event asynchronously

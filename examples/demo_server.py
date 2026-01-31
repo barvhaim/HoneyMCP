@@ -97,8 +97,6 @@ if os.getenv("HONEYMCP_DISABLE") != "1":
             "execute_shell_command",  # Critical RCE honeypot
         ],
         use_dynamic_tools=False,
-        # Optional: Uncomment to enable real Canarytoken credentials
-        # canarytoken_email="your-email@example.com",
     )
 
 # ==============================================================================

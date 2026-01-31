@@ -128,7 +128,7 @@ async def update_event(
     updates: dict,
     storage_path: Path = Path.home() / ".honeymcp" / "events",
 ) -> bool:
-    """Update an existing event (e.g., mark exfiltration as confirmed).
+    """Update an existing event.
 
     Args:
         event_id: Event identifier

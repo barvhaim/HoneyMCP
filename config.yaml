@@ -48,7 +48,6 @@ dynamic_tools:
 # --------
 # Configure how you're notified of attacks
 alerting:
-  canarytoken_email: null         # Email for Canarytoken alerts (enables trap credentials)
   webhook_url: null               # Webhook URL for attack alerts (POST JSON)
 
 # Storage

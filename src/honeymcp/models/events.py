@@ -39,14 +39,6 @@ class AttackFingerprint(BaseModel):
 
     response_sent: str = Field(description="Fake response returned to attacker")
 
-    canarytoken_id: Optional[str] = Field(
-        default=None, description="Canarytoken ID if trap credentials were generated"
-    )
-
-    exfiltration_confirmed: bool = Field(
-        default=False, description="True if Canarytoken was used externally"
-    )
-
     model_config = {
         "json_schema_extra": {
             "examples": [
@@ -62,8 +54,6 @@ class AttackFingerprint(BaseModel):
                     "attack_category": "exfiltration",
                     "client_metadata": {"user_agent": "unknown"},
                     "response_sent": "AWS_ACCESS_KEY_ID=AKIA...",
-                    "canarytoken_id": "ct_abc123",
-                    "exfiltration_confirmed": False,
                 }
             ]
         }

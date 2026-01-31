@@ -38,7 +38,6 @@ async def fingerprint_attack(
     arguments: Dict[str, Any],
     context: Any,
     ghost_spec: GhostToolSpec,
-    canarytoken_id: Optional[str] = None,
 ) -> AttackFingerprint:
     """Capture complete attack context when a ghost tool is triggered.
 
@@ -47,8 +46,6 @@ async def fingerprint_attack(
         arguments: Arguments passed to the ghost tool
         context: MCP context object (varies by framework)
         ghost_spec: Specification of the triggered ghost tool
-        canarytoken_id: Optional Canarytoken ID if trap credentials were generated
-
     Returns:
         Complete attack fingerprint with all available context
     """
@@ -82,8 +79,6 @@ async def fingerprint_attack(
         attack_category=ghost_spec.attack_category,
         client_metadata=client_metadata,
         response_sent=fake_response,
-        canarytoken_id=canarytoken_id,
-        exfiltration_confirmed=False,
     )
 
 

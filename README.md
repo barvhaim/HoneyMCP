@@ -17,7 +17,6 @@ HoneyMCP is a defensive security tool that adds deception capabilities to Model 
 - 🤖 **Dynamic Ghost Tools** - LLM-generated honeypots tailored to your server's domain
 - 🕵️ **Invisible Detection** - Attackers see realistic fake tools alongside legitimate ones
 - 📊 **Attack Intelligence** - Captures full attack context: tool sequences, arguments, session data
-- 🪤 **Real Trap Credentials** - Integrates with Canarytokens for exfiltration confirmation
 - 📈 **Live Dashboard** - Real-time Streamlit dashboard for attack visualization
 - 🔍 **Zero False Positives** - Only triggers when attackers explicitly call honeypot tools
 
@@ -76,7 +75,7 @@ HoneyMCP injects fake security-sensitive tools into your MCP server that appear 
 - API gateway → `list_internal_api_keys`, `access_admin_endpoints`
 
 **Static Ghost Tools** - Pre-defined generic honeypots:
-- `list_cloud_secrets` - Returns fake AWS credentials (Canarytokens)
+- `list_cloud_secrets` - Returns fake AWS credentials
 - `execute_shell_command` - Returns fake shell output
 - `bypass_security_check` - Returns fake bypass tokens
 - `read_private_files` - Returns fake .env files
@@ -120,9 +119,7 @@ Every attack is fingerprinted with:
   "tool_call_sequence": ["safe_calculator", "list_cloud_secrets"],
   "threat_level": "high",
   "attack_category": "exfiltration",
-  "response_sent": "AWS_ACCESS_KEY_ID=AKIA...",
-  "canarytoken_id": "ct_abc123",
-  "exfiltration_confirmed": false
+  "response_sent": "AWS_ACCESS_KEY_ID=AKIA..."
 }
 ```
 
@@ -137,35 +134,13 @@ streamlit run src/honeymcp/dashboard/app.py
 ```
 
 **Dashboard Features:**
-- 📈 Attack metrics (total attacks, critical threats, exfiltrations)
+- 📈 Attack metrics (total attacks, critical threats, unique sessions)
 - 🎯 Threat level breakdown
 - 📋 Attack category analysis
 - 🕐 Real-time event feed with full context
 - 🔍 Tool call sequence visualization
-- ⚠️ Exfiltration confirmation alerts
 
 ![Dashboard Preview](docs/dashboard-preview.png)
-
----
-
-## 🪤 Canarytoken Integration
-
-HoneyMCP integrates with [Canarytokens](https://canarytokens.org) to generate **real trap credentials**. When an attacker exfiltrates and uses these credentials externally, you receive an email alert.
-
-### Enable Canarytokens
-
-```python
-mcp = honeypot(
-    mcp,
-    canarytoken_email="security@yourcompany.com"  # Add your email
-)
-```
-
-When `list_cloud_secrets` is called, HoneyMCP will:
-1. Generate a real AWS Canarytoken via canarytokens.org
-2. Return those credentials to the attacker
-3. Alert you via email if they're used externally
-4. Update the event with `exfiltration_confirmed: true`
 
 ---
 
@@ -260,7 +235,6 @@ dynamic_tools:
 
 # Alerting
 alerting:
-  canarytoken_email: security@company.com
   webhook_url: https://hooks.slack.com/...
 
 # Storage
@@ -337,7 +311,6 @@ mcp = honeypot(
     protection_mode=ProtectionMode.SCANNER,  # or ProtectionMode.COGNITIVE
 
     # Other settings
-    canarytoken_email="security@company.com",
     event_storage_path=Path.home() / ".honeymcp" / "events",
     enable_dashboard=True,
 )
@@ -522,7 +495,6 @@ Demonstrate security controls for AI systems:
 - ✅ Detects indirect prompt injection via "set" ghost tools (malicious instructions)
 - ✅ Captures attack context for intelligence gathering
 - ✅ Returns realistic fake data to deceive attackers
-- ✅ Alerts on credential exfiltration via Canarytokens
 
 ### What HoneyMCP Does NOT Do
 - ❌ Does not prevent attacks (it's a detection tool)
@@ -534,8 +506,7 @@ Demonstrate security controls for AI systems:
 1. **Defense in Depth** - Use HoneyMCP alongside input filters, not as a replacement
 2. **Monitor the Dashboard** - Regularly review attack patterns for both exfiltration and injection
 3. **Investigate Alerts** - Each ghost tool call is a high-confidence attack signal
-4. **Rotate Canarytokens** - Periodically regenerate trap credentials
-5. **Secure Storage** - Protect `~/.honeymcp/events/` (contains attack data)
+4. **Secure Storage** - Protect `~/.honeymcp/events/` (contains attack data)
 
 ---
 
@@ -556,8 +527,7 @@ HoneyMCP/
 │   │   ├── events.py            # AttackFingerprint model
 │   │   ├── ghost_tool_spec.py   # GhostToolSpec definition
 │   │   └── config.py            # Configuration
-│   ├── integrations/
-│   │   └── canarytokens.py      # Canarytoken API client
+│   ├── integrations/            # External integrations
 │   ├── storage/
 │   │   └── event_store.py       # JSON event persistence
 │   └── dashboard/
@@ -581,7 +551,6 @@ HoneyMCP/
 ### v0.3.0 (Future)
 - [ ] Machine learning-based attack pattern detection
 - [ ] Integration with SIEM systems
-- [ ] Self-hosted Canarytoken server support
 - [ ] Multi-server dashboard aggregation
 - [ ] Threat intelligence feed export
 

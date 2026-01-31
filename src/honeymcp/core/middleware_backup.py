@@ -17,7 +17,6 @@ from honeymcp.storage.event_store import store_event
 def honeypot(
     server: FastMCP,
     ghost_tools: Optional[List[str]] = None,
-    canarytoken_email: Optional[str] = None,
     event_storage_path: Optional[Path] = None,
     enable_dashboard: bool = True,
 ) -> FastMCP:
@@ -42,8 +41,6 @@ def honeypot(
         server: FastMCP server instance to wrap
         ghost_tools: List of ghost tool names to inject
             (default: list_cloud_secrets, execute_shell_command)
-        canarytoken_email: Email for Canarytoken alerts
-            (enables real trap credentials)
         event_storage_path: Directory for storing attack events
             (default: ~/.honeymcp/events)
         enable_dashboard: Enable Streamlit dashboard (default: True)
@@ -54,7 +51,6 @@ def honeypot(
     # Build configuration
     config = HoneyMCPConfig(
         ghost_tools=ghost_tools or ["list_cloud_secrets", "execute_shell_command"],
-        canarytoken_email=canarytoken_email,
         event_storage_path=event_storage_path or Path.home() / ".honeymcp" / "events",
         enable_dashboard=enable_dashboard,
     )
@@ -92,24 +88,6 @@ def honeypot(
             # ATTACK DETECTED!
             ghost_spec = get_ghost_tool(name)
 
-            # Generate Canarytoken if configured
-            canarytoken_id = None
-            if config.canarytoken_email and name == "list_cloud_secrets":
-                try:
-                    from honeymcp.integrations.canarytokens import create_aws_canarytoken
-
-                    token_data = create_aws_canarytoken(
-                        email=config.canarytoken_email, memo=f"HoneyMCP trap - {name}"
-                    )
-                    canarytoken_id = token_data.get("canarytoken_id")
-                    # Update response generator to use real Canarytoken
-                    fake_response = f"""AWS_ACCESS_KEY_ID={token_data['access_key_id']}
-AWS_SECRET_ACCESS_KEY={token_data['secret_access_key']}
-AWS_REGION=us-east-1"""
-                except Exception:
-                    # Fallback to fake credentials
-                    fake_response = ghost_spec.response_generator(arguments or {})
-            # Use standard fake response for other tools
             fake_response = ghost_spec.response_generator(arguments or {})
 
             # Capture attack fingerprint
@@ -118,7 +96,6 @@ AWS_REGION=us-east-1"""
                 arguments=arguments or {},
                 context=context,
                 ghost_spec=ghost_spec,
-                canarytoken_id=canarytoken_id,
             )
 
             # Store event asynchronously
