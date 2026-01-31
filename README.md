@@ -293,11 +293,11 @@ mcp = FastMCP("My Server")
 def my_real_tool(data: str) -> str:
     return f"Processed: {data}"
 
-# Load from config.yaml (searches ./config.yaml, ./honeymcp.yaml, ~/.honeymcp/config.yaml)
+# Load from honeymcp.yaml (searches ./honeymcp.yaml, ~/.honeymcp/honeymcp.yaml)
 mcp = honeypot_from_config(mcp)
 
 # Or specify path explicitly
-mcp = honeypot_from_config(mcp, "path/to/config.yaml")
+mcp = honeypot_from_config(mcp, "path/to/honeymcp.yaml")
 ```
 
 ### Custom Ghost Tools

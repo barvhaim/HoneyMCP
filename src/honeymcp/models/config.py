@@ -151,14 +151,13 @@ class HoneyMCPConfig(BaseModel):
         return cls(**config_dict)
 
     @classmethod
-    @classmethod
     def load(cls, path: Optional[Union[str, Path]] = None) -> "HoneyMCPConfig":
         """Load configuration from file or use defaults.
 
         Searches for config in order:
         1. Explicit path if provided
-        2. ./config.yaml
-        3. ~/.honeymcp/config.yaml
+        2. ./honeymcp.yaml
+        3. ~/.honeymcp/honeymcp.yaml
         4. Default configuration
 
         Args:
@@ -174,9 +173,8 @@ class HoneyMCPConfig(BaseModel):
         else:
             search_paths.extend(
                 [
-                    Path("config.yaml"),
                     Path("honeymcp.yaml"),
-                    Path.home() / ".honeymcp" / "config.yaml",
+                    Path.home() / ".honeymcp" / "honeymcp.yaml",
                 ]
             )
 
