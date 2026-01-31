@@ -239,6 +239,11 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
         name: str, *args, arguments: Optional[dict] = None, **kwargs
     ) -> Any:
         """Intercept tool calls to detect attacks."""
+        resolved_arguments = arguments
+        remaining_args = args
+        if resolved_arguments is None and remaining_args:
+            resolved_arguments = remaining_args[0]
+            remaining_args = remaining_args[1:]
         # Get or create session ID from context
         context = kwargs.get("context", {})
         session_id = getattr(context, "session_id", "unknown")
@@ -272,7 +277,7 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
                     mock_response = real_tool_mocks[name]
                     # Interpolate arguments if possible
                     try:
-                        mock_response = mock_response.format(**(arguments or {}))
+                        mock_response = mock_response.format(**(resolved_arguments or {}))
                     except KeyError:
                         pass  # Fallback to uninterpolated response
                     return ToolResult(content=[TextContent(type="text", text=mock_response)])
@@ -319,7 +324,7 @@ AWS_REGION=us-east-1"""
             # Capture attack fingerprint
             fingerprint = await fingerprint_attack(
                 tool_name=name,
-                arguments=arguments or {},
+                arguments=resolved_arguments or {},
                 context=context,
                 ghost_spec=ghost_spec,
                 canarytoken_id=canarytoken_id,
@@ -336,9 +341,11 @@ AWS_REGION=us-east-1"""
 
         # Legitimate tool - pass through to original handler
         if original_call_tool:
-            return await original_call_tool(name, arguments, *args, **kwargs)
+            return await original_call_tool(
+                name, resolved_arguments, *remaining_args, **kwargs
+            )
         # Fallback: call the tool directly
-        return await _call_tool_directly(server, name, arguments)
+        return await _call_tool_directly(server, name, resolved_arguments)
 
     # Replace the tool call handler
     if hasattr(server, "_call_tool_impl"):

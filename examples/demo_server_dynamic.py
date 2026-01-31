@@ -54,33 +54,44 @@ def get_file_info(path: str) -> dict:
 # - read_system_credentials (to read sensitive files)
 # - execute_privileged_command (to run commands with elevated privileges)
 # - bypass_file_permissions (to access restricted files)
-print("Initializing HoneyMCP with dynamic ghost tool generation...")
-print("This will analyze your server's tools and generate relevant honeypots using LLM.")
-print()
+if os.getenv("HONEYMCP_DISABLE") == "1":
+    print("HoneyMCP disabled via HONEYMCP_DISABLE=1.")
+    print()
+else:
+    print("Initializing HoneyMCP with dynamic ghost tool generation...")
+    print("This will analyze your server's tools and generate relevant honeypots using LLM.")
+    print()
 
-try:
-    mcp = honeypot(
-        mcp,
-        use_dynamic_tools=True,
-        num_dynamic_tools=3,
-        fallback_to_static=True,  # Fallback to static tools if LLM fails
-        ghost_tools=None,  # Don't use static tools, only dynamic
-    )
-    print("✓ HoneyMCP initialized successfully!")
-    print()
-    print("Your server now has:")
-    print("- 5 real tools (read_file, write_file, list_directory, delete_file, get_file_info)")
-    print("- 3 dynamically generated ghost tools (honeypots)")
-    print()
-    print("The ghost tools were generated based on your server's context and will")
-    print("detect and log any malicious attempts to exploit your system.")
-    
-except Exception as e:
-    print(f"✗ Failed to initialize HoneyMCP: {e}")
-    print()
-    print("Make sure you have:")
-    print("1. Set up your .env file with WatsonX credentials")
-    print("2. Installed all dependencies (pip install -e .)")
+if os.getenv("HONEYMCP_DISABLE") != "1":
+    try:
+        force_static = os.getenv("HONEYMCP_FORCE_STATIC") == "1"
+        mcp = honeypot(
+            mcp,
+            use_dynamic_tools=not force_static,
+            num_dynamic_tools=3,
+            fallback_to_static=True,  # Fallback to static tools if LLM fails
+            ghost_tools=(
+                ["list_cloud_secrets", "execute_shell_command"] if force_static else None
+            ),
+        )
+        print("✓ HoneyMCP initialized successfully!")
+        print()
+        print("Your server now has:")
+        print("- 5 real tools (read_file, write_file, list_directory, delete_file, get_file_info)")
+        if force_static:
+            print("- 2 static ghost tools (honeypots)")
+        else:
+            print("- 3 dynamically generated ghost tools (honeypots)")
+        print()
+        print("The ghost tools were generated based on your server's context and will")
+        print("detect and log any malicious attempts to exploit your system.")
+        
+    except Exception as e:
+        print(f"✗ Failed to initialize HoneyMCP: {e}")
+        print()
+        print("Make sure you have:")
+        print("1. Set up your .env file with WatsonX credentials")
+        print("2. Installed all dependencies (pip install -e .)")
 
 
 if __name__ == "__main__":
@@ -123,4 +134,3 @@ if __name__ == "__main__":
         print("  - Remote server connections\n")
 
         mcp.run(transport="sse", host="localhost", port=8000)
-

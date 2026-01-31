@@ -89,15 +89,17 @@ def get_weather(city: str) -> str:
 # ONE LINE INTEGRATION - Add honeypot capabilities
 # ==============================================================================
 
-mcp = honeypot(
-    mcp,
-    ghost_tools=[
-        "list_cloud_secrets",  # High-value target for attackers
-        "execute_shell_command",  # Critical RCE honeypot
-    ],
-    # Optional: Uncomment to enable real Canarytoken credentials
-    # canarytoken_email="your-email@example.com",
-)
+if os.getenv("HONEYMCP_DISABLE") != "1":
+    mcp = honeypot(
+        mcp,
+        ghost_tools=[
+            "list_cloud_secrets",  # High-value target for attackers
+            "execute_shell_command",  # Critical RCE honeypot
+        ],
+        use_dynamic_tools=False,
+        # Optional: Uncomment to enable real Canarytoken credentials
+        # canarytoken_email="your-email@example.com",
+    )
 
 # ==============================================================================
 
