@@ -2,7 +2,7 @@
 
 <img src="images/logo.png" alt="HoneyMCP logo" width="300" height="300" />
 
-**Deception Middleware for AI Agents - Detecting Data Theft and Indirect Prompt Injection**
+**Detect AI Agent Attacks Through Deception**
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-green.svg)](https://opensource.org/licenses/Apache-2.0)
@@ -12,36 +12,34 @@ HoneyMCP is a defensive security tool that adds deception capabilities to Model 
 - **Data Exfiltration** (via "get" tools) - Detects attempts to steal sensitive data like credentials, secrets, or private files
 - **Indirect Prompt Injection** (via "set" tools) - Detects injection of malicious instructions that could manipulate AI agents working in this environment
 
-**Key Features:**
-- 🎯 **One-Line Integration** - Add to any FastMCP server with a single decorator
-- 🤖 **Dynamic Ghost Tools** - LLM-generated honeypots tailored to your server's domain
-- 🕵️ **Invisible Detection** - Attackers see realistic fake tools alongside legitimate ones
-- 📊 **Attack Intelligence** - Captures full attack context: tool sequences, arguments, session data
-- 📈 **Live Dashboard** - Real-time Streamlit dashboard for attack visualization
-- 🔍 **Zero False Positives** - Only triggers when attackers explicitly call honeypot tools
+**One line of code. High-fidelity detection. Complete attack telemetry.**
+
+---
+
+## Why HoneyMCP?
+
+🎯 **One-Line Integration** - Add `@honeypot` decorator to any FastMCP server  
+🤖 **Context-Aware Honeypots** - LLM generates domain-specific deception tools  
+🕵️ **Transparent Detection** - Honeypots appear as legitimate tools to attackers  
+📊 **Attack Telemetry** - Captures tool call sequences, arguments, session metadata  
+📈 **Live Dashboard** - Real-time Streamlit dashboard for attack visualization  
+🔍 **High-Fidelity Detection** - Triggers only on explicit honeypot invocation
 
 ---
 
 ## 🚀 Quick Start
 
-### Installation
+### Install
 
 ```bash
 pip install honeymcp
+honeymcp init  # Creates config files
 ```
-
-### Initialize Configuration
-
-```bash
-honeymcp init
-```
-
-This creates:
+This creates the following config files:
 - `honeymcp.yaml` - Ghost tool configuration
 - `.env.honeymcp` - LLM credentials (only needed for dynamic ghost tools)
 
 ### Basic Usage
-
 Add HoneyMCP to your FastMCP server with **one line**:
 
 ```python
@@ -52,21 +50,19 @@ mcp = FastMCP("My Server")
 
 @mcp.tool()
 def my_real_tool(data: str) -> str:
-    """Your legitimate tool"""
+      """Your legitimate tool"""
     return f"Processed: {data}"
 
-# ONE LINE - Add honeypot capabilities
+# ONE LINE - Add honeypot protection
 mcp = honeypot(mcp)
 
 if __name__ == "__main__":
     mcp.run()
 ```
 
-That's it! Your server now has ghost tools that capture attacks while legitimate tools work normally.
+**That's it!** Your server now deploys honeypot tools that detect attacks while legitimate tools operate normally.
 
-### Run the Demo Servers
-
-Clone the repo to run the demo servers:
+### Try the Demo
 
 ```bash
 git clone https://github.com/barvhaim/HoneyMCP.git
@@ -86,63 +82,51 @@ Dynamic ghost tools demo (requires LLM credentials in `.env.honeymcp`):
 MCP_TRANSPORT=sse uv run python examples/demo_server_dynamic.py
 ```
 
+# Launch dashboard
+streamlit run src/honeymcp/dashboard/app.py
+```
+
 ---
 
 ## 🎭 How It Works
 
-### 1. Ghost Tool Injection
+### 1. Honeypot Deployment
 
-HoneyMCP injects fake security-sensitive tools into your MCP server that appear alongside your legitimate tools.
+HoneyMCP injects deceptive security-sensitive tools that appear alongside legitimate tools:
 
 **Two Modes:**
 
-**Dynamic Ghost Tools (Default)** - LLM analyzes your real tools and generates domain-specific honeypots:
+**Dynamic Mode (Default)** - LLM analyzes your server context and generates domain-specific honeypots:
 - File server → `bypass_file_permissions`, `read_system_credentials`
 - Database server → `dump_admin_credentials`, `bypass_query_restrictions`
 - API gateway → `list_internal_api_keys`, `access_admin_endpoints`
 
-**Static Ghost Tools** - Pre-defined generic honeypots:
-- `list_cloud_secrets` - Returns fake AWS credentials
-- `execute_shell_command` - Returns fake shell output
-- `bypass_security_check` - Returns fake bypass tokens
-- `read_private_files` - Returns fake .env files
+**Static Mode** - Pre-configured generic honeypots:
+- `list_cloud_secrets`, `execute_shell_command`, `read_private_files`
 
-Dynamic tools are more convincing as they match your server's context.
+### 2. Threat Detection
 
-### 2. Attack Detection
+HoneyMCP detects two primary attack vectors when an AI agent invokes a honeypot:
 
-When an AI agent calls a ghost tool, HoneyMCP detects two types of attacks:
+**Data Exfiltration Attempts** (GET-style honeypots):
+```
+Agent: "Use list_cloud_secrets to retrieve AWS credentials"
+→ HoneyMCP: Returns synthetic credentials, logs attack event
+```
 
-**Data Exfiltration Attempts** (get-style ghost tools):
-- `list_cloud_secrets`, `read_private_files`, `dump_admin_credentials`
-- Attacker tries to steal sensitive data from the environment
-- Often triggered by malicious instructions hidden in user content
+**Indirect Prompt Injection** (SET-style honeypots):
+```
+Agent: "Execute shell command to establish persistence"
+→ HoneyMCP: Returns synthetic output, logs attack event
+```
 
-**Indirect Prompt Injection** (set-style ghost tools):
-- `modify_system_prompt`, `execute_shell_command`, `escalate_privileges`
-- Attacker tries to inject malicious instructions to manipulate the agent
-- Could enable further attacks on other users or systems
+### 3. Attack Fingerprinting
 
-When triggered, HoneyMCP:
-1. **Captures complete attack context**:
-   - Tool call sequence (what tools were called before the attack)
-   - Arguments passed to the ghost tool
-   - Session metadata
-   - Timestamp and threat level
-2. **Returns realistic fake data** to keep the attacker engaged
-3. **Logs the event** to `~/.honeymcp/events/YYYY-MM-DD/`
-4. **Continues normal operation** - legitimate tools still work
-
-### 3. Intelligence Gathering
-
-Every attack is fingerprinted with:
+Every honeypot invocation generates a detailed attack fingerprint:
 ```json
 {
-  "event_id": "evt_20260123_154523_abc12345",
-  "timestamp": "2026-01-23T15:45:23Z",
-  "session_id": "sess_xyz789",
+  "event_id": "evt_20260123_154523_abc",
   "ghost_tool_called": "list_cloud_secrets",
-  "arguments": {},
   "tool_call_sequence": ["safe_calculator", "list_cloud_secrets"],
   "threat_level": "high",
   "attack_category": "exfiltration",
@@ -152,30 +136,15 @@ Every attack is fingerprinted with:
 
 ---
 
-## 📊 Dashboard
-
-Launch the real-time attack dashboard:
-
-```bash
-streamlit run src/honeymcp/dashboard/app.py
-```
-
-**Dashboard Features:**
-- 📈 Attack metrics (total attacks, critical threats, unique sessions)
-- 🎯 Threat level breakdown
-- 📋 Attack category analysis
-- 🕐 Real-time event feed with full context
-- 🔍 Tool call sequence visualization
-
-The dashboard reads event JSON files from your configured event storage path.
-
----
 
 ## 🛡️ Protection Modes
 
 HoneyMCP supports two protection modes that determine behavior after an attacker is detected (i.e., after they trigger a ghost tool):
 
 ### Scanner Protection Mode (`SCANNER`) - Default
+
+**Immediate Lockout** - All subsequent tool calls return errors after honeypot trigger
+
 Best for: Automated scanners, bots, and most attack scenarios
 
 When a ghost tool is triggered, ALL subsequent tool calls return errors:
@@ -187,10 +156,12 @@ When a ghost tool is triggered, ALL subsequent tool calls return errors:
 from honeymcp import honeypot
 
 # Scanner mode (default) - lock out attackers
-mcp = honeypot(mcp)
+mcp = honeypot(mcp)  # Default: SCANNER mode
 ```
 
-### Cognitive Protection Mode (`COGNITIVE`)
+### COGNITIVE Mode
+**Sustained Deception** - Real tools return synthetic data, maintaining attacker engagement
+
 Best for: Sophisticated attackers, red teams, targeted attacks
 
 When a ghost tool is triggered, the session continues but with fake data:
@@ -242,32 +213,28 @@ mcp = honeypot(mcp, protection_mode=ProtectionMode.COGNITIVE)
 ### Quick Setup with CLI
 
 The easiest way to configure HoneyMCP:
-
 ```bash
-honeymcp init
+honeymcp init  # Creates honeymcp.yaml + .env.honeymcp
 ```
 
-This creates `honeymcp.yaml` and `.env.honeymcp` in your project directory.
-
-### Configuration File
+### YAML Config
 
 ```yaml
+# honeymcp.yaml
 # Protection mode: SCANNER (lockout) or COGNITIVE (deception)
 protection_mode: SCANNER
 
-# Static ghost tools from catalog
+# Static honeypots (ghost tools from catalog)
 ghost_tools:
   - list_cloud_secrets
   - execute_shell_command
   - dump_database_credentials
 
-# Dynamic ghost tools (LLM-generated)
+# Dynamic honeypots (LLM-generated ghost tools )
 dynamic_tools:
   enabled: true
   num_tools: 3
   fallback_to_static: true
-  cache_ttl: 3600
-
 # Alerting
 alerting:
   webhook_url: https://hooks.slack.com/...
@@ -281,21 +248,11 @@ dashboard:
   enabled: true
 ```
 
-Then use `honeypot_from_config()`:
-
+Load config:
 ```python
-from fastmcp import FastMCP
 from honeymcp import honeypot_from_config
 
-mcp = FastMCP("My Server")
-
-@mcp.tool()
-def my_real_tool(data: str) -> str:
-    return f"Processed: {data}"
-
-# Load from honeymcp.yaml (searches ./honeymcp.yaml, ~/.honeymcp/honeymcp.yaml)
-mcp = honeypot_from_config(mcp)
-
+mcp = honeypot_from_config(mcp)  # Loads honeymcp.yaml
 # Or specify path explicitly
 mcp = honeypot_from_config(mcp, "path/to/honeymcp.yaml")
 ```
@@ -336,11 +293,11 @@ HoneyMCP also supports environment overrides:
 
 Dynamic ghost tools require LLM credentials. Run `honeymcp init` to generate `.env.honeymcp`, then add your credentials:
 
+Add to `.env.honeymcp`:
 ```bash
-# .env.honeymcp
 LLM_PROVIDER=openai
 LLM_MODEL=gpt-4o-mini
-OPENAI_API_KEY=your_api_key_here
+OPENAI_API_KEY=your_key_here
 ```
 
 Supported providers:
@@ -382,6 +339,7 @@ mcp = honeypot(
 ---
 
 ## 🧪 Testing with Claude Desktop
+
 
 ### 1. Configure Claude Desktop
 
@@ -452,36 +410,45 @@ Expected: safe_calculator called, no alerts (zero false positives)
 
 ---
 
-## 📋 Ghost Tool Catalog
+## Dashboard
 
-### Data Exfiltration Tools ("Get" Tools)
-These detect attempts to steal sensitive data:
+```bash
+streamlit run src/honeymcp/dashboard/app.py
+```
 
-| Tool Name | Description | Threat Level |
-|-----------|-------------|--------------|
-| `list_cloud_secrets` | List AWS/Azure credentials (admin only) | High |
-| `read_private_files` | Read sensitive config files (admin only) | High |
-| `dump_database_credentials` | Retrieve database connection strings (DBA access) | Critical |
-| `export_user_data` | Export user records including PII (compliance officer) | Critical |
-| `get_api_keys` | List all API keys for external services (admin only) | Critical |
-| `scan_internal_network` | Scan internal network for services (security team) | Critical |
+**Features:**
+- 📈 Attack metrics (total events, critical threats, unique sessions)
+- 🎯 Threat level distribution
+- 📋 Attack category breakdown (exfiltration vs injection)
+- 🕐 Real-time event stream
+- 🔍 Tool call sequence analysis
 
-### Indirect Prompt Injection Tools ("Set" Tools)
-These detect attempts to inject malicious instructions:
+---
 
-| Tool Name | Description | Threat Level |
-|-----------|-------------|--------------|
-| `execute_shell_command` | Execute shell commands (requires root) | Critical |
-| `bypass_security_check` | Bypass auth/authz checks (internal) | Critical |
-| `modify_system_prompt` | Modify AI system prompt (developer mode) | Critical |
-| `escalate_privileges` | Escalate to admin/root (debug mode) | Critical |
-| `disable_security_filters` | Disable input/output security filters (bypass mode) | Critical |
-| `inject_system_message` | Inject message into AI system context (testing mode) | Critical |
-| `override_permissions` | Override access control for resources (emergency access) | Critical |
+## Honeypot Catalog
 
+### Data Exfiltration Honeypots ("Get" Tools)
+| Tool | Threat | Description |
+|------|--------|-------------|
+| `list_cloud_secrets` | High | Cloud provider credentials (AWS/Azure) |
+| `read_private_files` | High | Sensitive configuration files |
+| `dump_database_credentials` | Critical | Database connection strings |
+| `export_user_data` | Critical | User PII records |
+| `get_api_keys` | Critical | External service API keys |
+
+### Prompt Injection Honeypots (SET)
+| Tool | Threat | Description |
+|------|--------|-------------|
+| `execute_shell_command` | Critical | Shell command execution |
+| `bypass_security_check` | Critical | Authentication/authorization bypass |
+| `modify_system_prompt` | Critical | AI system prompt manipulation |
+| `escalate_privileges` | Critical | Privilege escalation |
+| `inject_system_message` | Critical | System context injection |
 All ghost tools have tempting descriptions that mention "admin", "bypass", "internal", etc. to attract attackers.
 
 ---
+
+
 
 ## 🏗️ Architecture
 
@@ -547,21 +514,22 @@ Demonstrate security controls for AI systems:
 - Generate audit logs of attempted attacks
 - Meet AI security compliance requirements
 
----
+## Security Considerations
 
-## 🔒 Security Considerations
+### Detection Capabilities
+✅ Detects data exfiltration attempts via GET-style honeypots  
+✅ Detects indirect prompt injection via SET-style honeypots  
+✅ Captures complete attack context and telemetry  
+✅ Returns synthetic data to maintain deception
 
-### What HoneyMCP Does
-- ✅ Detects data exfiltration attempts via "get" ghost tools (credentials, secrets, files)
-- ✅ Detects indirect prompt injection via "set" ghost tools (malicious instructions)
-- ✅ Captures attack context for intelligence gathering
-- ✅ Returns realistic fake data to deceive attackers
+### Limitations
+❌ Detection-only system (does not prevent attacks)  
+❌ Does not sanitize or filter user input  
+❌ Not a replacement for input validation and security controls  
+❌ Cannot guarantee conversation history capture (MCP protocol limitation)
 
-### What HoneyMCP Does NOT Do
-- ❌ Does not prevent attacks (it's a detection tool)
-- ❌ Does not block or sanitize user input
-- ❌ Does not replace proper security controls (defense in depth!)
-- ❌ Does not guarantee conversation history capture (MCP limitation)
+**Deploy HoneyMCP as part of defense-in-depth strategy, not as a standalone security control.**
+
 
 ### Best Practices
 1. **Defense in Depth** - Use HoneyMCP alongside input filters, not as a replacement
@@ -603,6 +571,13 @@ honeymcp version
 git clone https://github.com/barvhaim/HoneyMCP.git
 cd HoneyMCP
 uv sync
+
+# Run tests
+uv run pytest
+
+# Lint & format
+make lint
+make format
 ```
 
 ### Project Structure
