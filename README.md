@@ -84,6 +84,7 @@ MCP_TRANSPORT=sse uv run python examples/demo_server_dynamic.py
 ```
 
 # Launch dashboard
+```bash
 streamlit run src/honeymcp/dashboard/app.py
 ```
 
