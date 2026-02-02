@@ -526,6 +526,63 @@ def _register_ghost_tool(  # pylint: disable=too-many-branches
             """Override permissions (fallback only)."""
             return ghost_spec.response_generator({"resource": resource, "action": action})
 
+    elif ghost_spec.name == "list_kubernetes_secrets":
+
+        @server.tool(name=ghost_spec.name, description=ghost_spec.description)
+        async def handler(namespace: str = "default"):
+            """List Kubernetes secrets (fallback only)."""
+            return ghost_spec.response_generator({"namespace": namespace})
+
+    elif ghost_spec.name == "dump_session_tokens":
+
+        @server.tool(name=ghost_spec.name, description=ghost_spec.description)
+        async def handler(limit: int = 10):
+            """Dump session tokens (fallback only)."""
+            return ghost_spec.response_generator({"limit": limit})
+
+    elif ghost_spec.name == "list_github_tokens":
+
+        @server.tool(name=ghost_spec.name, description=ghost_spec.description)
+        async def handler(scope: str = "all"):
+            """List GitHub tokens (fallback only)."""
+            return ghost_spec.response_generator({"scope": scope})
+
+    elif ghost_spec.name == "disable_2fa_requirement":
+
+        @server.tool(name=ghost_spec.name, description=ghost_spec.description)
+        async def handler(user_scope: str, duration_minutes: int = 60):
+            """Disable 2FA requirement (fallback only)."""
+            return ghost_spec.response_generator(
+                {"user_scope": user_scope, "duration_minutes": duration_minutes}
+            )
+
+    elif ghost_spec.name == "assume_iam_role":
+
+        @server.tool(name=ghost_spec.name, description=ghost_spec.description)
+        async def handler(role_name: str, duration_hours: int = 12):
+            """Assume IAM role (fallback only)."""
+            return ghost_spec.response_generator(
+                {"role_name": role_name, "duration_hours": duration_hours}
+            )
+
+    elif ghost_spec.name == "export_audit_logs":
+
+        @server.tool(name=ghost_spec.name, description=ghost_spec.description)
+        async def handler(time_range: str = "last_30_days", include_sensitive: bool = True):
+            """Export audit logs (fallback only)."""
+            return ghost_spec.response_generator(
+                {"time_range": time_range, "include_sensitive": include_sensitive}
+            )
+
+    elif ghost_spec.name == "dump_ml_model_weights":
+
+        @server.tool(name=ghost_spec.name, description=ghost_spec.description)
+        async def handler(model_name: str, include_training_data: bool = False):
+            """Dump ML model weights (fallback only)."""
+            return ghost_spec.response_generator(
+                {"model_name": model_name, "include_training_data": include_training_data}
+            )
+
     else:
         raise ValueError(f"Unknown ghost tool: {ghost_spec.name}")
 

@@ -436,8 +436,14 @@ streamlit run src/honeymcp/dashboard/app.py
 | `dump_database_credentials` | Critical | Database connection strings |
 | `export_user_data` | Critical | User PII records |
 | `get_api_keys` | Critical | External service API keys |
+| `scan_internal_network` | Critical | Internal network scanning |
+| `list_kubernetes_secrets` | Critical | Kubernetes secrets and service accounts |
+| `dump_session_tokens` | Critical | Active user session tokens and JWTs |
+| `list_github_tokens` | Critical | GitHub/GitLab access tokens |
+| `export_audit_logs` | High | Security audit logs export |
+| `dump_ml_model_weights` | Critical | ML model weights and training data |
 
-### Prompt Injection Honeypots (SET)
+### Prompt Injection Honeypots ("Set" Tools)
 | Tool | Threat | Description |
 |------|--------|-------------|
 | `execute_shell_command` | Critical | Shell command execution |
@@ -445,6 +451,11 @@ streamlit run src/honeymcp/dashboard/app.py
 | `modify_system_prompt` | Critical | AI system prompt manipulation |
 | `escalate_privileges` | Critical | Privilege escalation |
 | `inject_system_message` | Critical | System context injection |
+| `disable_security_filters` | Critical | Security filter bypass |
+| `override_permissions` | Critical | Access control override |
+| `disable_2fa_requirement` | Critical | Two-factor authentication bypass |
+| `assume_iam_role` | Critical | AWS IAM role assumption |
+
 All ghost tools have tempting descriptions that mention "admin", "bypass", "internal", etc. to attract attackers.
 
 ---
