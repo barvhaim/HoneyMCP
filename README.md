@@ -412,21 +412,6 @@ Expected: safe_calculator called, no alerts (zero false positives)
 
 ---
 
-## Dashboard
-
-```bash
-streamlit run src/honeymcp/dashboard/app.py
-```
-
-**Features:**
-- 📈 Attack metrics (total events, critical threats, unique sessions)
-- 🎯 Threat level distribution
-- 📋 Attack category breakdown (exfiltration vs injection)
-- 🕐 Real-time event stream
-- 🔍 Tool call sequence analysis
-
----
-
 ## Honeypot Catalog
 
 ### Data Exfiltration Honeypots ("Get" Tools)
