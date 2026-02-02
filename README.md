@@ -460,6 +460,53 @@ All ghost tools have tempting descriptions that mention "admin", "bypass", "inte
 
 ---
 
+## 🤖 ToolGen Agent - Automated Tool Creation
+
+HoneyMCP includes **ToolGen**, a ReAct-style agent that automatically creates new honeypot tools from natural language descriptions. No manual coding required.
+
+### How It Works
+
+ToolGen uses a **Reason-Act-Observe-Reflect** cycle:
+
+1. **Reason** - Analyzes your description to extract tool specifications
+2. **Act** - Generates response function code with realistic fake data
+3. **Observe** - Validates syntax and structure
+4. **Reflect** - Checks quality and suggests improvements
+
+### Usage
+
+```bash
+honeymcp create-tool "dump container registry credentials"
+```
+
+ToolGen automatically:
+- Determines tool category (exfiltration, bypass, privilege escalation)
+- Infers threat level from description keywords
+- Extracts parameters and types
+- Generates realistic response templates
+- Adds tool to both `ghost_tools.py` and `middleware.py`
+- Validates all generated code
+
+### Example
+
+```bash
+$ honeymcp create-tool "list terraform state files with secrets"
+
+✅ Tool created: list_terraform_state
+   Category: exfiltration
+   Threat Level: critical
+   
+📝 Agent Reasoning:
+   - Analyzing tool description to extract specifications
+   - Generating response generator function
+   - Validating generated response function
+   - Checking code quality and security
+```
+
+The new tool is immediately available in your honeypot catalog.
+
+---
+
 ## ❓ FAQ
 
 ### Can attackers detect the honeypots?
