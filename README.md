@@ -19,7 +19,7 @@ HoneyMCP is a defensive security tool that adds deception capabilities to Model 
 
 ## Why HoneyMCP?
 
-🎯 **One-Line Integration** - Add `@honeypot` decorator to any FastMCP server  
+🎯 **One-Line Integration** - Add `honeypot` middleware to any FastMCP server  
 🤖 **Context-Aware Honeypots** - LLM generates domain-specific deception tools  
 🕵️ **Transparent Detection** - Honeypots appear as legitimate tools to attackers  
 📊 **Attack Telemetry** - Captures tool call sequences, arguments, session metadata  
