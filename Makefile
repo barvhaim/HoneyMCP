@@ -1,4 +1,4 @@
-.PHONY: help install dev test lint format clean run-dashboard run-example build inspector
+.PHONY: help install dev test lint format clean run-dashboard run-example run-api build inspector
 
 help:
 	@echo "Available commands:"
@@ -10,6 +10,7 @@ help:
 	@echo "  make clean          - Clean build artifacts and cache"
 	@echo "  make run-dashboard  - Run the Streamlit dashboard"
 	@echo "  make run-example    - Run the demo server example"
+	@echo "  make run-api        - Run the FastAPI service"
 	@echo "  make build          - Build the package"
 	@echo "  make inspector      - Run MCP Inspector (npx)"
 
@@ -41,6 +42,9 @@ run-dashboard:
 
 run-example:
 	uv run python examples/demo_server.py
+
+run-api:
+	uv run uvicorn honeymcp.api.app:app --reload --host 127.0.0.1 --port 8001
 
 build:
 	uv build

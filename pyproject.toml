@@ -41,6 +41,7 @@ classifiers = [
 ]
 dependencies = [
     "fastmcp>=3.0.0b1",
+    "fastapi>=0.115.0",
     "pydantic>=2.10.0",
     "pyyaml>=6.0.0",
     "streamlit>=1.42.0",
