@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -120,10 +122,27 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
 
     app.state.config = config
     app.state.event_storage_path = config.event_storage_path
+    dashboard_root = Path(__file__).resolve().parent.parent / "dashboard" / "react_umd"
+    app.state.dashboard_root = dashboard_root
+
+    if dashboard_root.exists():
+        app.mount(
+            "/dashboard/assets",
+            StaticFiles(directory=str(dashboard_root)),
+            name="dashboard_assets",
+        )
 
     @app.get("/health")
     async def health() -> Dict[str, str]:
         return {"status": "ok", "timestamp": datetime.utcnow().isoformat() + "Z"}
+
+    @app.get("/dashboard")
+    @app.get("/dashboard/", include_in_schema=False)
+    async def react_dashboard() -> FileResponse:
+        index_path = app.state.dashboard_root / "index.html"
+        if not index_path.exists():
+            raise HTTPException(status_code=404, detail="Dashboard UI not found")
+        return FileResponse(index_path)
 
     @app.get("/events", response_model=EventListResponse)
     async def get_events(
