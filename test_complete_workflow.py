@@ -1,7 +1,9 @@
 """Test complete workflow: create tool and add to catalog."""
 import sys
 from pathlib import Path
-sys.path.insert(0, '/Users/alon/dev/venues/HoneyMCP/src')
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from honeymcp.core.tool_creator import ToolCreatorAgent
 from honeymcp.core.catalog_updater import CatalogUpdater
@@ -58,8 +60,7 @@ print(test_response[:200] + "..." if len(test_response) > 200 else test_response
 
 # Step 4: Validate catalog updater (dry run - don't actually update)
 print("\nStep 4: Validating catalog updater...")
-project_root = Path('/Users/alon/dev/venues/HoneyMCP')
-updater = CatalogUpdater(project_root)
+updater = CatalogUpdater(PROJECT_ROOT)
 
 # Check if tool already exists
 if updater._tool_exists(tool_spec.name):
