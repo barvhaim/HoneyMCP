@@ -1,4 +1,4 @@
-.PHONY: help install dev test lint format clean run-dashboard run-example run-api build inspector
+.PHONY: help install dev test lint format clean run-example run-ui build inspector
 
 help:
 	@echo "Available commands:"
@@ -8,9 +8,8 @@ help:
 	@echo "  make lint           - Run linting checks"
 	@echo "  make format         - Format code"
 	@echo "  make clean          - Clean build artifacts and cache"
-	@echo "  make run-dashboard  - Run the Streamlit dashboard"
 	@echo "  make run-example    - Run the demo server example"
-	@echo "  make run-api        - Run the FastAPI service"
+	@echo "  make run-ui         - Run API for React dashboard (/dashboard)"
 	@echo "  make build          - Build the package"
 	@echo "  make inspector      - Run MCP Inspector (npx)"
 
@@ -37,13 +36,11 @@ clean:
 	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
 	rm -rf build/ dist/ .pytest_cache/ .mypy_cache/ .ruff_cache/
 
-run-dashboard:
-	uv run streamlit run src/honeymcp/dashboard/app.py
-
 run-example:
 	uv run python examples/demo_server.py
 
-run-api:
+run-ui:
+	@echo "React dashboard: http://127.0.0.1:8001/dashboard"
 	uv run uvicorn honeymcp.api.app:app --reload --host 127.0.0.1 --port 8001
 
 build:

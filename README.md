@@ -23,7 +23,7 @@ HoneyMCP is a defensive security tool that adds deception capabilities to Model 
 🤖 **Context-Aware Honeypots** - LLM generates domain-specific deception tools  
 🕵️ **Transparent Detection** - Honeypots appear as legitimate tools to attackers  
 📊 **Attack Telemetry** - Captures tool call sequences, arguments, session metadata  
-📈 **Live Dashboard** - Real-time Streamlit dashboard for attack visualization  
+📈 **Live Dashboard** - Real-time React dashboard for attack visualization  
 🔍 **High-Fidelity Detection** - Triggers only on explicit honeypot invocation
 
 ---
@@ -83,9 +83,9 @@ Dynamic ghost tools demo (requires LLM credentials in `.env.honeymcp`):
 MCP_TRANSPORT=sse uv run python examples/demo_server_dynamic.py
 ```
 
-# Launch dashboard
+# Launch dashboard UI
 ```bash
-streamlit run src/honeymcp/dashboard/app.py
+make run-ui
 ```
 
 ---
@@ -589,7 +589,7 @@ The detection mechanism is client-agnostic - it operates at the server level.
                      │
                      ▼
          ┌──────────────────┐
-         │ Streamlit        │
+         │ React            │
          │ Dashboard        │
          └──────────────────┘
 ```
@@ -713,7 +713,7 @@ HoneyMCP/
 │   ├── storage/
 │   │   └── event_store.py       # JSON event persistence
 │   └── dashboard/
-│       └── app.py               # Streamlit dashboard
+│       └── react_umd/           # React dashboard assets
 ├── examples/
 │   ├── demo_server.py           # Static ghost tools demo
 │   └── demo_server_dynamic.py   # Dynamic ghost tools demo
