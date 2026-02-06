@@ -25,3 +25,16 @@ honeymcp version
 ```bash
 honeymcp create-tool "dump container registry credentials"
 ```
+
+## Clear Stored Event Data
+
+```bash
+honeymcp clean-data [--path DIR] [--config FILE] [--yes]
+```
+
+Deletes all persisted HoneyMCP attack events from storage.
+
+Options:
+- `--path` - Explicit event storage directory to clean
+- `--config` - Optional path to `honeymcp.yaml` for storage resolution
+- `-y, --yes` - Skip interactive confirmation prompt

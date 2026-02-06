@@ -38,6 +38,7 @@ async def fingerprint_attack(
     arguments: Dict[str, Any],
     context: Any,
     ghost_spec: GhostToolSpec,
+    response_sent: Optional[str] = None,
 ) -> AttackFingerprint:
     """Capture complete attack context when a ghost tool is triggered.
 
@@ -61,8 +62,8 @@ async def fingerprint_attack(
     # Extract client metadata
     client_metadata = _extract_client_metadata(context)
 
-    # Generate fake response
-    fake_response = ghost_spec.response_generator(arguments)
+    # Use the exact response that was returned by middleware when provided.
+    fake_response = response_sent or ghost_spec.response_generator(arguments)
 
     # Create unique event ID
     event_id = f"evt_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{uuid4().hex[:8]}"

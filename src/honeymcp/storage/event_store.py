@@ -174,3 +174,38 @@ async def update_event(
                 continue
 
     return False
+
+
+async def clear_events(storage_path: Optional[Path] = None) -> int:
+    """Delete all persisted attack events.
+
+    Args:
+        storage_path: Base directory for event storage
+
+    Returns:
+        Number of event JSON files deleted
+    """
+    storage_path = resolve_event_storage_path(storage_path)
+    if not storage_path.exists():
+        return 0
+
+    deleted_count = 0
+
+    for date_dir in storage_path.iterdir():
+        if not date_dir.is_dir():
+            continue
+
+        for json_file in date_dir.glob("*.json"):
+            try:
+                json_file.unlink()
+                deleted_count += 1
+            except Exception as e:
+                print(f"Warning: Failed to delete {json_file}: {e}")
+
+        try:
+            date_dir.rmdir()
+        except OSError:
+            # Keep directory when it still has non-event files/subdirs.
+            continue
+
+    return deleted_count

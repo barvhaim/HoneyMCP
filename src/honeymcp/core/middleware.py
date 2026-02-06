@@ -287,8 +287,8 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
                 else dynamic_ghost_specs.get(name)
             )
 
-            # Use standard fake response
-            fake_response = ghost_spec.response_generator(arguments or {})
+            # Use one response value for both MCP return and stored event.
+            fake_response = ghost_spec.response_generator(resolved_arguments or {})
 
             # Capture attack fingerprint
             fingerprint = await fingerprint_attack(
@@ -296,6 +296,7 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
                 arguments=resolved_arguments or {},
                 context=context,
                 ghost_spec=ghost_spec,
+                response_sent=fake_response,
             )
 
             # ATTACK DETECTED! Mark session as attacker and log details

@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from honeymcp.models.config import HoneyMCPConfig
 from honeymcp.models.events import AttackFingerprint
-from honeymcp.storage.event_store import get_event, list_events
+from honeymcp.storage.event_store import clear_events, get_event, list_events
 
 
 class EventListResponse(BaseModel):
@@ -46,6 +46,13 @@ class FiltersResponse(BaseModel):
     threat_levels: List[str]
     categories: List[str]
     tools: List[str]
+
+
+class ClearEventsResponse(BaseModel):
+    """Response returned when stored events are deleted."""
+
+    deleted_events: int
+    storage_path: str
 
 
 def _apply_filters(
@@ -176,6 +183,14 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
         if event is None:
             raise HTTPException(status_code=404, detail="Event not found")
         return event
+
+    @app.delete("/events", response_model=ClearEventsResponse)
+    async def delete_events() -> ClearEventsResponse:
+        deleted_count = await clear_events(storage_path=app.state.event_storage_path)
+        return ClearEventsResponse(
+            deleted_events=deleted_count,
+            storage_path=str(app.state.event_storage_path),
+        )
 
     @app.get("/metrics", response_model=MetricsResponse)
     async def get_metrics(

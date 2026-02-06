@@ -232,7 +232,17 @@ mcp = honeypot(mcp, protection_mode=ProtectionMode.COGNITIVE)
 The easiest way to configure HoneyMCP:
 ```bash
 honeymcp init  # Creates honeymcp.yaml + .env.honeymcp
+# Optional: remove all persisted attack event files
+honeymcp clean-data
 ```
+
+### Clear Stored Events
+
+You can remove all persisted event JSON files from CLI, API, or UI:
+
+- CLI: `honeymcp clean-data`
+- API: `DELETE /events`
+- Dashboard: Use the **Clear Stored Data** button
 
 ### YAML Config
 

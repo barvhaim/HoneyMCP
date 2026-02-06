@@ -1,8 +1,12 @@
 """HoneyMCP CLI - Command line tools for HoneyMCP setup and management."""
 
+import asyncio
 import argparse
 import sys
 from pathlib import Path
+
+from honeymcp.models.config import HoneyMCPConfig
+from honeymcp.storage.event_store import clear_events
 
 CONFIG_TEMPLATE = """\
 # HoneyMCP Configuration
@@ -156,6 +160,27 @@ def cmd_version(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_clean_data(args: argparse.Namespace) -> int:
+    """Delete stored HoneyMCP attack events."""
+    storage_path: Path
+    if args.path:
+        storage_path = Path(args.path).expanduser()
+    else:
+        config = HoneyMCPConfig.load(args.config)
+        storage_path = config.event_storage_path
+
+    if not args.yes:
+        print(f"This will permanently delete all stored events in: {storage_path}")
+        confirm = input("Continue? [y/N]: ").strip().lower()
+        if confirm not in {"y", "yes"}:
+            print("Aborted.")
+            return 0
+
+    deleted_count = asyncio.run(clear_events(storage_path=storage_path))
+    print(f"Deleted {deleted_count} event file(s) from {storage_path}")
+    return 0
+
+
 def main() -> int:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -190,6 +215,29 @@ def main() -> int:
         help="Show HoneyMCP version",
     )
     version_parser.set_defaults(func=cmd_version)
+
+    clean_data_parser = subparsers.add_parser(
+        "clean-data",
+        help="Delete all stored attack event data",
+        description="Remove persisted event JSON files from HoneyMCP storage",
+    )
+    clean_data_parser.add_argument(
+        "--path",
+        default=None,
+        help="Event storage directory (overrides config and env resolution)",
+    )
+    clean_data_parser.add_argument(
+        "--config",
+        default=None,
+        help="Path to honeymcp.yaml (optional, default lookup order applies)",
+    )
+    clean_data_parser.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help="Skip confirmation prompt",
+    )
+    clean_data_parser.set_defaults(func=cmd_clean_data)
 
     # Parse and execute
     args = parser.parse_args()
