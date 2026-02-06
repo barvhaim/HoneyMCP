@@ -88,6 +88,8 @@ MCP_TRANSPORT=sse uv run python examples/demo_server_dynamic.py
 make run-ui
 ```
 
+<img width="1426" height="972" alt="image" src="https://github.com/user-attachments/assets/2dfc37a2-8caa-4338-b7f7-1cbac7ed9d79" />
+
 ---
 
 ## 🎭 How It Works
