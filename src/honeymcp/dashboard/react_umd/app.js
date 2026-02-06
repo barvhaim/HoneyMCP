@@ -1,10 +1,6 @@
-const { useEffect, useMemo, useState, useCallback } = React;
+const { useEffect, useState, useCallback } = React;
 
 // --- Utility Functions ---
-
-function classNames(...classes) {
-  return classes.filter(Boolean).join(" ");
-}
 
 function timeAgo(dateString) {
   const date = new Date(dateString);
@@ -115,12 +111,12 @@ function EventRow({ event }) {
           </div>
         </div>
 
-        <IconChevronDown className={`transition-transform ${expanded ? 'rotate-180' : ''}`} style={{ transition: 'transform 0.2s', transform: expanded ? 'rotate(180deg)' : 'rotate(0)' }} />
+        <IconChevronDown className={`chevron ${expanded ? 'rotate-180' : ''}`} />
       </div>
 
       {expanded && (
         <div className="event-details">
-          <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+          <div className="grid detail-grid">
             <div className="detail-group">
               <div className="detail-label">Session ID</div>
               <div className="font-mono text-sm">{event.session_id}</div>
@@ -159,9 +155,9 @@ function EventRow({ event }) {
   );
 }
 
-function FilterBar({ filters, options, onChange, onRefresh, onClear, loading, clearing, apiBase, onApiBaseChange }) {
+function FilterBar({ filters, options, onChange, onRefresh, onClear, loading, clearing }) {
   return (
-    <section className="panel glass-panel">
+    <section className="panel glass-panel filter-panel">
       <div className="grid filters">
         {/* API Base input removed as requested */}
 
@@ -201,7 +197,7 @@ function FilterBar({ filters, options, onChange, onRefresh, onClear, loading, cl
 
 function App() {
   // State
-  const [apiBase, setApiBase] = useState(() => {
+  const [apiBase] = useState(() => {
     return window.location.protocol.startsWith('http')
       ? window.location.origin.replace(/\/$/, "")
       : "http://127.0.0.1:8001";
@@ -317,11 +313,13 @@ function App() {
       <header className="header">
         <div className="header-top">
           <div>
+            <p className="header-kicker">HoneyMCP Security Operations</p>
             <h1 className="title">HoneyMCP Dashboard</h1>
             <p className="subtitle">Real-time Threat Monitoring Intelligence</p>
           </div>
           <div className="status-indicator">
-            {/* Could add a 'Live' dot here */}
+            <span className="live-dot" />
+            <span>Live Feed</span>
           </div>
         </div>
       </header>
@@ -334,8 +332,6 @@ function App() {
         onClear={handleClearData}
         loading={loading}
         clearing={clearing}
-        apiBase={apiBase}
-        onApiBaseChange={setApiBase}
       />
 
       {notice && (
@@ -345,8 +341,8 @@ function App() {
       )}
 
       {error && (
-        <div className="panel" style={{ borderColor: 'var(--critical-border)', background: 'var(--critical-bg)', color: 'var(--critical-text)' }}>
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+        <div className="panel panel-error">
+          <div className="message-row">
             <IconAlert />
             <span>{error}</span>
           </div>
@@ -354,7 +350,7 @@ function App() {
       )}
 
       {/* Metrics Grid */}
-      <section className="grid metrics" style={{ marginBottom: '32px' }}>
+      <section className="grid metrics metric-grid">
         <MetricCard
           label="Total Attacks"
           value={data.metrics?.total_attacks || 0}
@@ -382,8 +378,8 @@ function App() {
       </section>
 
       {/* Events Feed */}
-      <section>
-        <div className="header-top" style={{ marginBottom: '16px' }}>
+      <section className="events-section">
+        <div className="section-head">
           <h3>Recent Events</h3>
           <span className="badge low">{data.total} Total</span>
         </div>
