@@ -275,6 +275,20 @@ dashboard:
   enabled: true
 ```
 
+### Slack Alerting
+
+When `alerting.webhook_url` is set, HoneyMCP sends one webhook message per detected attack.
+
+- Delivery failures are logged and do not interrupt MCP tool responses.
+- Arguments are redacted for common secret keys (`token`, `secret`, `password`, `key`, `credential`).
+- Long fields are truncated to keep messages readable in Slack.
+
+Local test without Slack workspace:
+
+1. Start any local POST-capturing webhook endpoint (for example, a tiny FastAPI/Flask app).
+2. Set `alerting.webhook_url` to that local endpoint, such as `http://127.0.0.1:9999/webhook`.
+3. Trigger a ghost tool and verify the JSON payload.
+
 Load config:
 ```python
 from honeymcp import honeypot_from_config
