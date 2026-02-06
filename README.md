@@ -124,17 +124,30 @@ Agent: "Execute shell command to establish persistence"
 
 ### 3. Attack Fingerprinting
 
-Every honeypot invocation generates a detailed attack fingerprint:
+Every honeypot invocation generates an `AttackFingerprint` event and writes it to
+`~/.honeymcp/events/YYYY-MM-DD/HHMMSS_<session>.json`:
 ```json
 {
-  "event_id": "evt_20260123_154523_abc",
+  "event_id": "evt_20260123_154523_abc12345",
+  "timestamp": "2026-01-23T15:45:23Z",
+  "session_id": "sess_xyz789",
   "ghost_tool_called": "list_cloud_secrets",
+  "arguments": {},
+  "conversation_history": null,
   "tool_call_sequence": ["safe_calculator", "list_cloud_secrets"],
   "threat_level": "high",
   "attack_category": "exfiltration",
+  "client_metadata": {
+    "user_agent": "unknown"
+  },
   "response_sent": "AWS_ACCESS_KEY_ID=AKIA..."
 }
 ```
+
+Notes:
+- `tool_call_sequence` is tracked per session and includes calls before the ghost tool trigger.
+- `conversation_history` may be `null` when the MCP transport does not expose message history.
+- `session_id` is resolved from context/request metadata when available, otherwise generated.
 
 ---
 
