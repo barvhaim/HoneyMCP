@@ -3,7 +3,7 @@ import pytest
 import tempfile
 from pathlib import Path
 from datetime import datetime, date
-from honeymcp.storage.event_store import store_event, list_events
+from honeymcp.storage.event_store import clear_events, list_events, store_event
 from honeymcp.models.events import AttackFingerprint
 
 
@@ -104,3 +104,25 @@ class TestEventStore:
             end_date=today
         )
         assert len(events) >= 1
+
+    @pytest.mark.asyncio
+    async def test_clear_events(self, temp_event_dir):
+        """Test deleting all persisted events."""
+        for i in range(2):
+            fingerprint = AttackFingerprint(
+                event_id=f"clear_event_{i}",
+                timestamp=datetime.now(),
+                session_id=f"{i}_clear_session",
+                ghost_tool_called="clear_tool",
+                arguments={},
+                threat_level="high",
+                attack_category="exfiltration",
+                response_sent="Fake response",
+            )
+            await store_event(fingerprint, storage_path=temp_event_dir)
+
+        deleted_count = await clear_events(storage_path=temp_event_dir)
+        remaining = await list_events(storage_path=temp_event_dir)
+
+        assert deleted_count == 2
+        assert remaining == []

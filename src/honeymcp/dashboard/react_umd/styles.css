@@ -236,9 +236,26 @@
    box-shadow: 0 6px 8px rgba(217, 119, 6, 0.4);
  }
 
- button.primary:active {
-   transform: translateY(0);
- }
+button.primary:active {
+  transform: translateY(0);
+}
+
+button.danger {
+  background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%);
+  color: white;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button.danger:hover {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 
  /* Metrics */
  .metric-card {
@@ -429,11 +446,17 @@
  }
 
  /* Fallback/Empty States */
- .empty-state {
-   text-align: center;
-   padding: 64px 0;
-   color: var(--text-secondary);
- }
+.empty-state {
+  text-align: center;
+  padding: 64px 0;
+  color: var(--text-secondary);
+}
+
+.panel-notice {
+  border-color: rgba(134, 239, 172, 0.5);
+  background: rgba(22, 101, 52, 0.18);
+  color: #bbf7d0;
+}
 
  /* Loading Skeleton */
  .skeleton {

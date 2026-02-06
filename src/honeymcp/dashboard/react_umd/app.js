@@ -159,7 +159,7 @@ function EventRow({ event }) {
   );
 }
 
-function FilterBar({ filters, options, onChange, onRefresh, loading, apiBase, onApiBaseChange }) {
+function FilterBar({ filters, options, onChange, onRefresh, onClear, loading, clearing, apiBase, onApiBaseChange }) {
   return (
     <section className="panel glass-panel">
       <div className="grid filters">
@@ -184,6 +184,12 @@ function FilterBar({ filters, options, onChange, onRefresh, loading, apiBase, on
         <div className="form-group">
           <button className="primary" onClick={onRefresh} disabled={loading}>
             {loading ? "Refreshing..." : "Apply Filters"}
+          </button>
+        </div>
+
+        <div className="form-group">
+          <button className="danger" onClick={onClear} disabled={clearing || loading}>
+            {clearing ? "Clearing..." : "Clear Stored Data"}
           </button>
         </div>
       </div>
@@ -222,13 +228,15 @@ function App() {
   });
 
   const [loading, setLoading] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
 
   // Data Fetching
-  const fetchJson = useCallback(async (path, queryParams = {}) => {
+  const fetchJson = useCallback(async (path, queryParams = {}, requestOptions = {}) => {
     const url = `${apiBase}${path}${buildQuery(queryParams)}`;
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, requestOptions);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return await response.json();
     } catch (err) {
@@ -239,6 +247,7 @@ function App() {
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setNotice(null);
     try {
       // Parallel fetch
       const [filterData, metricsData, eventsResp] = await Promise.all([
@@ -281,6 +290,28 @@ function App() {
     setFilters(prev => ({ ...prev, [name]: value }));
   };
 
+  const handleClearData = async () => {
+    const shouldDelete = window.confirm("Delete all stored HoneyMCP events?");
+    if (!shouldDelete) {
+      return;
+    }
+
+    setClearing(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const result = await fetchJson("/events", {}, { method: "DELETE" });
+      setNotice(`Deleted ${result.deleted_events || 0} event(s).`);
+      await loadData();
+    } catch (err) {
+      console.error(err);
+      setError("Unable to clear stored events.");
+    } finally {
+      setClearing(false);
+    }
+  };
+
   return (
     <div className="container">
       <header className="header">
@@ -300,10 +331,18 @@ function App() {
         options={options}
         onChange={handleFilterChange}
         onRefresh={loadData}
+        onClear={handleClearData}
         loading={loading}
+        clearing={clearing}
         apiBase={apiBase}
         onApiBaseChange={setApiBase}
       />
+
+      {notice && (
+        <div className="panel panel-notice">
+          <span>{notice}</span>
+        </div>
+      )}
 
       {error && (
         <div className="panel" style={{ borderColor: 'var(--critical-border)', background: 'var(--critical-bg)', color: 'var(--critical-text)' }}>
