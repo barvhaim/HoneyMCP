@@ -19,6 +19,7 @@ from honeymcp.core.fingerprinter import (
 from honeymcp.core.ghost_tools import GHOST_TOOL_CATALOG, get_ghost_tool
 from honeymcp.core.dynamic_ghost_tools import DynamicGhostToolGenerator, DynamicGhostToolSpec
 from honeymcp.llm.analyzers import extract_tool_info
+from honeymcp.integrations.slack import build_slack_payload, send_slack_webhook
 from honeymcp.models.config import HoneyMCPConfig, resolve_event_storage_path
 from honeymcp.models.protection_mode import ProtectionMode
 from honeymcp.storage.event_store import store_event
@@ -71,6 +72,7 @@ def honeypot_from_config(
         fallback_to_static=config.fallback_to_static,
         event_storage_path=config.event_storage_path,
         enable_dashboard=config.enable_dashboard,
+        webhook_url=config.webhook_url,
         protection_mode=config.protection_mode,
     )
 
@@ -85,6 +87,7 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
     fallback_to_static: bool = True,
     event_storage_path: Optional[Path] = None,
     enable_dashboard: bool = True,
+    webhook_url: Optional[str] = None,
     protection_mode: ProtectionMode = ProtectionMode.SCANNER,
 ) -> FastMCP:
     """Wrap a FastMCP server with HoneyMCP deception capabilities.
@@ -116,6 +119,7 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
         event_storage_path: Directory for storing attack events
             (default: ~/.honeymcp/events)
         enable_dashboard: Enable Streamlit dashboard (default: True)
+        webhook_url: Optional webhook URL for attack alerts (e.g. Slack incoming webhook)
         protection_mode: Protection mode after attacker detection (default: SCANNER)
             - SCANNER: Lockout mode - all tools return errors
             - COGNITIVE: Deception mode - real tools return fake/mock data
@@ -133,6 +137,7 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
         fallback_to_static=fallback_to_static,
         event_storage_path=resolve_event_storage_path(event_storage_path),
         enable_dashboard=enable_dashboard,
+        webhook_url=webhook_url,
         protection_mode=protection_mode,
     )
 
@@ -319,6 +324,13 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
                 await store_event(fingerprint, config.event_storage_path)
             except Exception as e:
                 print(f"Warning: Failed to store attack event: {e}")
+
+            if config.webhook_url:
+                try:
+                    payload = build_slack_payload(fingerprint)
+                    await send_slack_webhook(config.webhook_url, payload)
+                except Exception as e:
+                    logger.warning("Failed to deliver webhook alert for event %s: %s", fingerprint.event_id, e)
 
             # Return fake response wrapped in ToolResult for MCP compatibility
             return ToolResult(content=[TextContent(type="text", text=fake_response)], meta=None)

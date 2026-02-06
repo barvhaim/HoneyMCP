@@ -1,3 +1,5 @@
 """External integrations for HoneyMCP."""
 
-__all__: list[str] = []
+from honeymcp.integrations.slack import build_slack_payload, send_slack_webhook
+
+__all__ = ["build_slack_payload", "send_slack_webhook"]
