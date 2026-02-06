@@ -286,7 +286,7 @@ function App() {
       <header className="header">
         <div className="header-top">
           <div>
-            <h1 className="title">HoneyDashboard</h1>
+            <h1 className="title">HoneyMCP Dashboard</h1>
             <p className="subtitle">Real-time Threat Monitoring Intelligence</p>
           </div>
           <div className="status-indicator">

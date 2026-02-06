@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 - Source code lives in `src/honeymcp/` with core middleware in `src/honeymcp/core/` and data models in `src/honeymcp/models/`.
-- LLM integration is in `src/honeymcp/llm/`, storage in `src/honeymcp/storage/`, and the Streamlit UI in `src/honeymcp/dashboard/`.
+- LLM integration is in `src/honeymcp/llm/`, storage in `src/honeymcp/storage/`, and the dashboard UI in `src/honeymcp/dashboard/`.
 - Examples are in `examples/` (e.g., `examples/demo_server.py`).
 - Tests are currently small and live at the repo root (e.g., `test_dynamic_tools.py`).
 - Build artifacts and packaged outputs appear in `dist/`.
@@ -12,7 +12,7 @@ Use `uv` for local development:
 - `uv sync` installs dev dependencies.
 - `uv sync --no-dev` installs runtime-only dependencies.
 - `uv run python examples/demo_server.py` runs the demo server.
-- `streamlit run src/honeymcp/dashboard/app.py` launches the dashboard.
+- `make run-ui` launches the dashboard API/UI at `http://127.0.0.1:8001/dashboard`.
 - `uv run pytest` runs tests.
 
 Makefile shortcuts:
