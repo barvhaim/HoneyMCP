@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 import logging
 import asyncio
+import time
 
 from fastmcp import FastMCP
 from fastmcp.tools.tool import ToolResult
@@ -17,7 +18,11 @@ from honeymcp.core.fingerprinter import (
     resolve_session_id,
 )
 from honeymcp.core.ghost_tools import GHOST_TOOL_CATALOG, get_ghost_tool
-from honeymcp.core.dynamic_ghost_tools import DynamicGhostToolGenerator, DynamicGhostToolSpec
+from honeymcp.core.dynamic_ghost_tools import (
+    DynamicGhostToolGenerator,
+    DynamicGhostToolSpec,
+    ServerContext,
+)
 from honeymcp.llm.analyzers import extract_tool_info
 from honeymcp.integrations.slack import build_slack_payload, send_slack_webhook
 from honeymcp.models.config import HoneyMCPConfig, resolve_event_storage_path
@@ -146,6 +151,11 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
 
     # Store dynamic ghost tool specs for later use
     dynamic_ghost_specs = {}
+    dynamic_tool_names: List[str] = []
+    dynamic_generator: Optional[DynamicGhostToolGenerator] = None
+    dynamic_server_context: Optional[ServerContext] = None
+    dynamic_rotation_lock = asyncio.Lock()
+    next_dynamic_rotation_at: Optional[float] = None
 
     # Store mock responses for real tools (used in COGNITIVE protection mode)
     real_tool_mocks: Dict[str, str] = {}
@@ -168,6 +178,7 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
 
             # Initialize LLM-based generator
             generator = DynamicGhostToolGenerator(cache_ttl=cache_ttl, model_name=llm_model)
+            dynamic_generator = generator
 
             # Run async operations in event loop
             try:
@@ -184,6 +195,7 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
             # Analyze server context
             logger.info("Analyzing server context with LLM")
             server_context = loop.run_until_complete(generator.analyze_server_context(real_tools))
+            dynamic_server_context = server_context
             logger.info("Server analysis complete: domain=%s", server_context.domain)
 
             # Generate dynamic ghost tools
@@ -202,6 +214,10 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
                 _register_dynamic_ghost_tool(server, dynamic_spec)
                 ghost_tool_names.add(dynamic_spec.name)
                 dynamic_ghost_specs[dynamic_spec.name] = dynamic_spec
+                dynamic_tool_names.append(dynamic_spec.name)
+
+            if dynamic_tool_names:
+                next_dynamic_rotation_at = time.monotonic() + max(1, cache_ttl)
 
             logger.info("Successfully registered %s dynamic ghost tools", len(dynamic_tools))
 
@@ -229,6 +245,58 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
                     ghost_tool_names.add(tool_name)
             elif not fallback_to_static:
                 raise
+
+    async def maybe_rotate_dynamic_tools() -> None:
+        """Rotate dynamic tool deception payloads on a fixed interval."""
+        nonlocal next_dynamic_rotation_at
+
+        if not dynamic_tool_names or dynamic_generator is None or dynamic_server_context is None:
+            return
+
+        if next_dynamic_rotation_at is not None and time.monotonic() < next_dynamic_rotation_at:
+            return
+
+        async with dynamic_rotation_lock:
+            # Re-check after waiting on the lock.
+            if next_dynamic_rotation_at is not None and time.monotonic() < next_dynamic_rotation_at:
+                return
+
+            logger.info(
+                "Rotating %s dynamic ghost tools (cache_ttl=%ss)",
+                len(dynamic_tool_names),
+                cache_ttl,
+            )
+            try:
+                # Force a fresh generation cycle.
+                dynamic_generator.clear_cache()
+                refreshed_specs = await dynamic_generator.generate_ghost_tools(
+                    dynamic_server_context,
+                    num_tools=len(dynamic_tool_names),
+                )
+                if not refreshed_specs:
+                    logger.warning("Dynamic tool rotation produced no new specs")
+                    next_dynamic_rotation_at = time.monotonic() + max(1, cache_ttl)
+                    return
+
+                refreshed_count = 0
+                for index, tool_name in enumerate(dynamic_tool_names):
+                    current_spec = dynamic_ghost_specs.get(tool_name)
+                    if current_spec is None:
+                        continue
+                    # Keep registered tool names/signatures stable and rotate deception content.
+                    source_spec = refreshed_specs[index % len(refreshed_specs)]
+                    current_spec.response_generator = source_spec.response_generator
+                    current_spec.threat_level = source_spec.threat_level
+                    current_spec.attack_category = source_spec.attack_category
+                    current_spec.generation_timestamp = source_spec.generation_timestamp
+                    current_spec.fake_response = source_spec.fake_response
+                    refreshed_count += 1
+
+                logger.info("Dynamic tool rotation refreshed %s specs", refreshed_count)
+            except Exception as rotation_error:
+                logger.warning("Dynamic tool rotation failed: %s", rotation_error)
+            finally:
+                next_dynamic_rotation_at = time.monotonic() + max(1, cache_ttl)
 
     # Store original tool call handler before we replace it
     original_call_tool = None
@@ -286,6 +354,8 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
 
         # Check if this is a ghost tool
         if name in ghost_tool_names:
+            if name in dynamic_ghost_specs:
+                await maybe_rotate_dynamic_tools()
             ghost_spec = (
                 get_ghost_tool(name)
                 if name in GHOST_TOOL_CATALOG
