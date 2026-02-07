@@ -12,11 +12,20 @@ STATIC_GHOST_TOOLS = ["execute_shell_command", "list_cloud_secrets"]
 
 def _llm_configured() -> bool:
     """Check if LLM credentials are configured for dynamic tool generation."""
+    from dotenv import load_dotenv
+
+    # Load .env.honeymcp first, then .env (same order as the LLM client)
+    load_dotenv(".env.honeymcp")
+    load_dotenv()
+
     # Check for watsonx credentials (primary LLM provider)
     if os.getenv("WATSONX_APIKEY") and os.getenv("WATSONX_PROJECT_ID"):
         return True
     # Check for OpenAI credentials
     if os.getenv("OPENAI_API_KEY"):
+        return True
+    # Check for RITS credentials
+    if os.getenv("RITS_API_KEY"):
         return True
     # Check for generic LiteLLM config
     if os.getenv("LLM_API_KEY"):

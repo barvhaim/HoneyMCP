@@ -73,18 +73,22 @@ def _get_base_llm_settings(model_name: str, model_parameters: Optional[Dict]) ->
 
 
 def get_chat_llm_client(
-    model_name: str = "rits/openai/gpt-oss-120b",
+    model_name: Optional[str] = None,
     model_parameters: Optional[Dict] = None,
 ) -> Any:
     """Get a chat LLM client based on the configured provider.
 
     Args:
-        model_name: The name of the model to use.
+        model_name: The name of the model to use. Falls back to the
+            ``LLM_MODEL`` environment variable if not provided.
         model_parameters: Optional model parameters.
 
     Returns:
         The LLM client instance.
     """
+    if model_name is None:
+        model_name = os.getenv("LLM_MODEL", "gpt-4o-mini")
+
     if LLM_PROVIDER in (LLMProviderType.OPENAI, LLMProviderType.RITS):
         from langchain_openai import ChatOpenAI  # pylint: disable=import-outside-toplevel
 

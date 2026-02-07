@@ -64,9 +64,7 @@ def _apply_filters(
     filtered = events
     if threat_level:
         filtered = [
-            event
-            for event in filtered
-            if event.threat_level.lower() == threat_level.lower()
+            event for event in filtered if event.threat_level.lower() == threat_level.lower()
         ]
     if category:
         filtered = [event for event in filtered if event.attack_category == category]

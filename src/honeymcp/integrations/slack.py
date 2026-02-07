@@ -88,7 +88,9 @@ def build_slack_payload(fingerprint: AttackFingerprint) -> Dict[str, Any]:
     }
 
 
-async def send_slack_webhook(webhook_url: str, payload: Dict[str, Any], timeout: float = 3.0) -> None:
+async def send_slack_webhook(
+    webhook_url: str, payload: Dict[str, Any], timeout: float = 3.0
+) -> None:
     """Send Slack webhook payload and raise on delivery errors."""
 
     def _post() -> None:
@@ -96,4 +98,3 @@ async def send_slack_webhook(webhook_url: str, payload: Dict[str, Any], timeout:
         response.raise_for_status()
 
     await asyncio.to_thread(_post)
-

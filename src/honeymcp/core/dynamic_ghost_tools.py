@@ -86,8 +86,10 @@ class DynamicGhostToolGenerator:
 
         parameters = dict(self.model_parameters)
         parameters["temperature"] = temperature
+        # Ghost tool generation produces long JSON; ensure sufficient output tokens.
+        parameters.setdefault("max_tokens", 4096)
         client = get_chat_llm_client(
-            model_name=self.model_name or "rits/openai/gpt-oss-120b",
+            model_name=self.model_name,
             model_parameters=parameters,
         )
         self._client_cache[temperature] = client

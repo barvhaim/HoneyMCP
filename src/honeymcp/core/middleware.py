@@ -10,6 +10,7 @@ from fastmcp.tools.tool import ToolResult
 from mcp.types import TextContent
 
 from honeymcp.core.fingerprinter import (
+    configure_session_store,
     fingerprint_attack,
     record_tool_call,
     mark_attacker_detected,
@@ -74,6 +75,8 @@ def honeypot_from_config(
         enable_dashboard=config.enable_dashboard,
         webhook_url=config.webhook_url,
         protection_mode=config.protection_mode,
+        session_ttl=config.session_ttl,
+        max_sessions=config.max_sessions,
     )
 
 
@@ -89,6 +92,8 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
     enable_dashboard: bool = True,
     webhook_url: Optional[str] = None,
     protection_mode: ProtectionMode = ProtectionMode.SCANNER,
+    session_ttl: int = 3600,
+    max_sessions: int = 10_000,
 ) -> FastMCP:
     """Wrap a FastMCP server with HoneyMCP deception capabilities.
 
@@ -123,10 +128,17 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
         protection_mode: Protection mode after attacker detection (default: SCANNER)
             - SCANNER: Lockout mode - all tools return errors
             - COGNITIVE: Deception mode - real tools return fake/mock data
+        session_ttl: Session TTL in seconds. Expired sessions are evicted
+            automatically to prevent memory leaks (default: 3600)
+        max_sessions: Maximum number of tracked sessions before oldest
+            are evicted (default: 10000)
 
     Returns:
         The wrapped FastMCP server with honeypot capabilities
     """
+    # Configure session store with TTL and size bounds
+    configure_session_store(ttl=session_ttl, max_size=max_sessions)
+
     # Build configuration
     config = HoneyMCPConfig(
         ghost_tools=ghost_tools or [],
@@ -139,6 +151,8 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
         enable_dashboard=enable_dashboard,
         webhook_url=webhook_url,
         protection_mode=protection_mode,
+        session_ttl=session_ttl,
+        max_sessions=max_sessions,
     )
 
     # Track ghost tool names for quick lookup
@@ -245,6 +259,17 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
         if resolved_arguments is None and remaining_args:
             resolved_arguments = remaining_args[0]
             remaining_args = remaining_args[1:]
+
+        # FastMCP 3.0 re-entry guard: FastMCP's middleware chain calls
+        # self.call_tool(..., run_middleware=False) via call_next, which
+        # hits this interceptor a second time.  When run_middleware=False
+        # we know this is a re-entrant call, so delegate directly without
+        # recording again.
+        if kwargs.get("run_middleware") is False:
+            if original_call_tool:
+                return await original_call_tool(name, resolved_arguments, *remaining_args, **kwargs)
+            return await _call_tool_directly(server, name, resolved_arguments)
+
         # Get or create session ID from context
         context = kwargs.get("context", {})
         session_id = resolve_session_id(context)
@@ -330,7 +355,9 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
                     payload = build_slack_payload(fingerprint)
                     await send_slack_webhook(config.webhook_url, payload)
                 except Exception as e:
-                    logger.warning("Failed to deliver webhook alert for event %s: %s", fingerprint.event_id, e)
+                    logger.warning(
+                        "Failed to deliver webhook alert for event %s: %s", fingerprint.event_id, e
+                    )
 
             # Return fake response wrapped in ToolResult for MCP compatibility
             return ToolResult(content=[TextContent(type="text", text=fake_response)], meta=None)
@@ -342,9 +369,7 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
         return await _call_tool_directly(server, name, resolved_arguments)
 
     # Replace the tool call handler
-    if hasattr(server, "_call_tool_impl"):
-        server._call_tool_impl = intercepting_call_tool
-    elif hasattr(server, "call_tool"):
+    if hasattr(server, "call_tool"):
         server.call_tool = intercepting_call_tool
     else:
         _patch_tool_access(server, intercepting_call_tool, ghost_tool_names)

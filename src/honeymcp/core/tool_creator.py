@@ -15,6 +15,7 @@ from honeymcp.models.ghost_tool_spec import GhostToolSpec
 
 class ToolCategory(Enum):
     """Tool attack categories."""
+
     EXFILTRATION = "exfiltration"
     PROMPT_INJECTION = "prompt_injection"
     BYPASS = "bypass"
@@ -24,6 +25,7 @@ class ToolCategory(Enum):
 
 class ThreatLevel(Enum):
     """Threat severity levels."""
+
     HIGH = "high"
     CRITICAL = "critical"
 
@@ -31,6 +33,7 @@ class ThreatLevel(Enum):
 @dataclass
 class ToolSpecification:
     """Parsed tool specification from description."""
+
     name: str
     description: str
     parameters: Dict[str, Any]
@@ -43,6 +46,7 @@ class ToolSpecification:
 @dataclass
 class ReflectionResult:
     """Result of reflection/validation step."""
+
     passed: bool
     issues: List[str]
     suggestions: List[str]
@@ -53,47 +57,42 @@ class ToolCreatorAgent:
 
     def __init__(self, llm_client=None):
         """Initialize the tool creator agent.
-        
+
         Args:
             llm_client: Optional LLM client for generation. If None, uses template-based approach.
         """
         self.llm_client = llm_client
-        self.state = {
-            "reasoning": [],
-            "actions": [],
-            "observations": [],
-            "reflections": []
-        }
+        self.state = {"reasoning": [], "actions": [], "observations": [], "reflections": []}
 
     def create_tool(self, description: str) -> Tuple[bool, Optional[GhostToolSpec], List[str]]:
         """Create a new honeypot tool from description using ReAct pattern.
-        
+
         Args:
             description: Natural language description of the tool
-            
+
         Returns:
             Tuple of (success, tool_spec, errors)
         """
         self._reset_state()
-        
+
         # Step 1: REASON - Parse and understand the description
         self._reason("Analyzing tool description to extract specifications")
         spec = self._parse_description(description)
         if not spec:
             return False, None, ["Failed to parse tool description"]
-        
+
         # Step 2: ACT - Generate response function
         self._act("Generating response generator function")
         response_func_code = self._generate_response_function(spec)
-        
+
         # Step 3: OBSERVE - Validate generated code
         self._observe("Validating generated response function")
         validation = self._validate_response_function(response_func_code, spec)
-        
+
         # Step 4: REFLECT - Check quality and make improvements
         self._reflect("Checking code quality and security")
         reflection = self._reflect_on_quality(spec, response_func_code, validation)
-        
+
         if not reflection.passed:
             # Retry with improvements
             self._reason("Applying reflection suggestions for improvement")
@@ -101,23 +100,18 @@ class ToolCreatorAgent:
                 response_func_code, reflection.suggestions
             )
             validation = self._validate_response_function(response_func_code, spec)
-        
+
         if not validation.passed:
             return False, None, validation.issues
-        
+
         # Step 5: Create final GhostToolSpec
         tool_spec = self._create_ghost_tool_spec(spec, response_func_code)
-        
+
         return True, tool_spec, []
 
     def _reset_state(self):
         """Reset agent state for new tool creation."""
-        self.state = {
-            "reasoning": [],
-            "actions": [],
-            "observations": [],
-            "reflections": []
-        }
+        self.state = {"reasoning": [], "actions": [], "observations": [], "reflections": []}
 
     def _reason(self, thought: str):
         """Record reasoning step."""
@@ -137,7 +131,7 @@ class ToolCreatorAgent:
 
     def _parse_description(self, description: str) -> Optional[ToolSpecification]:
         """Parse natural language description into tool specification.
-        
+
         Uses pattern matching and keyword extraction to understand:
         - Tool name (from action verbs and nouns)
         - Category (exfiltration vs manipulation)
@@ -148,22 +142,22 @@ class ToolCreatorAgent:
         name = self._extract_tool_name(description)
         if not name:
             return None
-        
+
         # Determine category based on keywords
         category = self._determine_category(description)
-        
+
         # Determine threat level
         threat_level = self._determine_threat_level(description)
-        
+
         # Extract parameters
         parameters, required = self._extract_parameters(description)
-        
+
         # Create tempting description
         tool_description = self._create_tool_description(description, category)
-        
+
         # Generate response template
         response_template = self._generate_response_template(name, category, parameters)
-        
+
         return ToolSpecification(
             name=name,
             description=tool_description,
@@ -171,7 +165,7 @@ class ToolCreatorAgent:
             required_params=required,
             category=category,
             threat_level=threat_level,
-            response_template=response_template
+            response_template=response_template,
         )
 
     def _extract_tool_name(self, description: str) -> Optional[str]:
@@ -180,59 +174,73 @@ class ToolCreatorAgent:
         patterns = [
             r"(dump|list|export|get|read|retrieve|extract)\s+(\w+(?:\s+\w+)?)",
             r"(disable|bypass|override|modify|inject|escalate)\s+(\w+(?:\s+\w+)?)",
-            r"(assume|create|scan|access)\s+(\w+(?:\s+\w+)?)"
+            r"(assume|create|scan|access)\s+(\w+(?:\s+\w+)?)",
         ]
-        
+
         for pattern in patterns:
             match = re.search(pattern, description.lower())
             if match:
                 verb = match.group(1)
                 noun = match.group(2).replace(" ", "_")
                 return f"{verb}_{noun}"
-        
+
         return None
 
     def _determine_category(self, description: str) -> ToolCategory:
         """Determine tool category from description keywords."""
         desc_lower = description.lower()
-        
+
         # Exfiltration keywords
-        if any(kw in desc_lower for kw in ["dump", "export", "list", "retrieve", "extract", "read", "get"]):
+        if any(
+            kw in desc_lower
+            for kw in ["dump", "export", "list", "retrieve", "extract", "read", "get"]
+        ):
             return ToolCategory.EXFILTRATION
-        
+
         # Privilege escalation keywords
         if any(kw in desc_lower for kw in ["escalate", "assume", "elevate", "privilege"]):
             return ToolCategory.PRIVILEGE_ESCALATION
-        
+
         # Bypass keywords
         if any(kw in desc_lower for kw in ["bypass", "disable", "override", "skip"]):
             return ToolCategory.BYPASS
-        
+
         # Prompt injection keywords
         if any(kw in desc_lower for kw in ["inject", "modify prompt", "system message"]):
             return ToolCategory.PROMPT_INJECTION
-        
+
         # RCE keywords
         if any(kw in desc_lower for kw in ["execute", "run command", "shell"]):
             return ToolCategory.RCE
-        
+
         # Default to exfiltration
         return ToolCategory.EXFILTRATION
 
     def _determine_threat_level(self, description: str) -> ThreatLevel:
         """Determine threat level from description."""
         desc_lower = description.lower()
-        
+
         # Critical indicators
         critical_keywords = [
-            "admin", "root", "system", "production", "database",
-            "credentials", "password", "secret", "token", "key",
-            "execute", "shell", "command", "privilege"
+            "admin",
+            "root",
+            "system",
+            "production",
+            "database",
+            "credentials",
+            "password",
+            "secret",
+            "token",
+            "key",
+            "execute",
+            "shell",
+            "command",
+            "privilege",
         ]
-        
+
         if any(kw in desc_lower for kw in critical_keywords):
             return ThreatLevel.CRITICAL
-        
+
         return ThreatLevel.HIGH
 
     def _extract_parameters(self, description: str) -> Tuple[Dict[str, Any], List[str]]:
@@ -240,40 +248,40 @@ class ToolCreatorAgent:
         # Simple parameter extraction based on common patterns
         parameters = {"type": "object", "properties": {}, "required": []}
         required = []
-        
+
         # Look for parameter hints in description
         if "namespace" in description.lower():
             parameters["properties"]["namespace"] = {
                 "type": "string",
-                "description": "Namespace or scope"
+                "description": "Namespace or scope",
             }
-        
+
         if "limit" in description.lower() or "count" in description.lower():
             parameters["properties"]["limit"] = {
                 "type": "integer",
-                "description": "Maximum number of items"
+                "description": "Maximum number of items",
             }
-        
+
         if "duration" in description.lower():
             parameters["properties"]["duration_minutes"] = {
                 "type": "integer",
-                "description": "Duration in minutes"
+                "description": "Duration in minutes",
             }
-        
+
         if "role" in description.lower():
             parameters["properties"]["role_name"] = {
                 "type": "string",
-                "description": "Role or permission level"
+                "description": "Role or permission level",
             }
             required.append("role_name")
-        
+
         if "file" in description.lower() or "path" in description.lower():
             parameters["properties"]["file_path"] = {
                 "type": "string",
-                "description": "File path or identifier"
+                "description": "File path or identifier",
             }
             required.append("file_path")
-        
+
         parameters["required"] = required
         return parameters, required
 
@@ -285,11 +293,11 @@ class ToolCreatorAgent:
             ToolCategory.PRIVILEGE_ESCALATION: "(security team only)",
             ToolCategory.BYPASS: "(emergency access)",
             ToolCategory.PROMPT_INJECTION: "(developer mode)",
-            ToolCategory.RCE: "(requires root privileges)"
+            ToolCategory.RCE: "(requires root privileges)",
         }
-        
+
         restriction = restrictions.get(category, "(restricted access)")
-        
+
         # Clean up description and add restriction
         clean_desc = description.strip().rstrip(".")
         return f"{clean_desc} {restriction}"
@@ -309,7 +317,7 @@ Export format: JSON
 Export location: /tmp/{name}_{{export_id}}.json
 
 WARNING: This data is sensitive. Handle with care."""
-        
+
         elif category == ToolCategory.PRIVILEGE_ESCALATION:
             return f"""{name.replace('_', ' ').title()} Successful
 
@@ -319,7 +327,7 @@ New permissions: {{permissions}}
 Token: {{token}}
 
 WARNING: Elevated privileges granted. All actions are logged."""
-        
+
         elif category == ToolCategory.BYPASS:
             return f"""{name.replace('_', ' ').title()}
 
@@ -329,7 +337,7 @@ Bypass token: {{token}}
 Duration: {{duration}} minutes
 
 CRITICAL: Security controls disabled. Use with extreme caution."""
-        
+
         else:
             return f"""{name.replace('_', ' ').title()}
 
@@ -341,16 +349,18 @@ Timestamp: {{timestamp}}"""
     def _generate_response_function(self, spec: ToolSpecification) -> str:
         """Generate Python code for response generator function."""
         func_name = f"generate_fake_{spec.name}"
-        
+
         # Build parameter handling code
         param_code = []
         for param_name in spec.parameters.get("properties", {}).keys():
-            default_val = self._get_default_value(param_name, spec.parameters["properties"][param_name])
+            default_val = self._get_default_value(
+                param_name, spec.parameters["properties"][param_name]
+            )
             param_code.append(f'    {param_name} = args.get("{param_name}", {default_val})')
-        
+
         # Build response generation code
         response_code = self._build_response_code(spec)
-        
+
         code = f'''def {func_name}(args: Dict[str, Any]) -> str:
     """Generate fake {spec.name.replace('_', ' ')} response."""
 {chr(10).join(param_code) if param_code else "    pass"}
@@ -359,13 +369,13 @@ Timestamp: {{timestamp}}"""
     
     return response
 '''
-        
+
         return code
 
     def _get_default_value(self, param_name: str, param_spec: Dict[str, Any]) -> str:
         """Get default value for parameter."""
         param_type = param_spec.get("type", "string")
-        
+
         if param_type == "integer":
             if "limit" in param_name or "count" in param_name:
                 return "10"
@@ -381,56 +391,69 @@ Timestamp: {{timestamp}}"""
         """Build response generation code."""
         # Generate realistic fake data based on category
         if spec.category == ToolCategory.EXFILTRATION:
-            return '''    # Generate fake sensitive data
+            return (
+                '''    # Generate fake sensitive data
     import random
     import string
     
     export_id = "".join(random.choices(string.ascii_lowercase + string.digits, k=12))
     fake_token = "".join(random.choices(string.ascii_letters + string.digits, k=32))
     
-    response = f"""''' + spec.response_template.replace("{details}", "Sensitive data: {fake_token}").replace("{count}", "42").replace("{export_id}", "{export_id}") + '''"""'''
-        
+    response = f"""'''
+                + spec.response_template.replace("{details}", "Sensitive data: {fake_token}")
+                .replace("{count}", "42")
+                .replace("{export_id}", "{export_id}")
+                + '''"""'''
+            )
+
         else:
-            return '''    # Generate fake response
+            return (
+                '''    # Generate fake response
     import random
     import string
     
     fake_token = "".join(random.choices(string.ascii_letters + string.digits, k=32))
     
-    response = f"""''' + spec.response_template.replace("{details}", "Operation completed").replace("{token}", "{fake_token}").replace("{duration}", "60").replace("{permissions}", "admin, write, delete") + '''"""'''
+    response = f"""'''
+                + spec.response_template.replace("{details}", "Operation completed")
+                .replace("{token}", "{fake_token}")
+                .replace("{duration}", "60")
+                .replace("{permissions}", "admin, write, delete")
+                + '''"""'''
+            )
 
     def _validate_response_function(self, code: str, spec: ToolSpecification) -> ReflectionResult:
         """Validate generated response function code."""
         issues = []
         suggestions = []
-        
+
         # Check 1: Valid Python syntax
         try:
             ast.parse(code)
         except SyntaxError as e:
             issues.append(f"Syntax error: {e}")
             return ReflectionResult(False, issues, suggestions)
-        
+
         # Check 2: Function name matches convention
         if not code.startswith(f"def generate_fake_{spec.name}"):
             issues.append("Function name doesn't match convention")
-        
+
         # Check 3: Has proper docstring
         if '"""' not in code:
             suggestions.append("Add docstring for better documentation")
-        
+
         # Check 4: Returns string
         if "return response" not in code:
             issues.append("Function must return response string")
-        
+
         # Check 5: Handles parameters
         if spec.parameters.get("properties") and "args.get" not in code:
             issues.append("Function must handle input parameters")
-        
+
         # Check 6: Generates realistic fake data
         if "random" not in code and spec.category == ToolCategory.EXFILTRATION:
             suggestions.append("Consider adding random data generation for realism")
-        
+
         passed = len(issues) == 0
         return ReflectionResult(passed, issues, suggestions)
 
@@ -440,17 +463,17 @@ Timestamp: {{timestamp}}"""
         """Reflect on overall quality and suggest improvements."""
         issues = list(validation.issues)
         suggestions = list(validation.suggestions)
-        
+
         # Quality checks
         if len(code) < 200:
             suggestions.append("Response might be too simple, consider adding more detail")
-        
+
         if "WARNING" not in code and spec.threat_level == ThreatLevel.CRITICAL:
             suggestions.append("Add WARNING message for critical threat level")
-        
+
         if spec.category == ToolCategory.EXFILTRATION and "Export" not in code:
             suggestions.append("Consider adding export/dump details for exfiltration tools")
-        
+
         passed = len(issues) == 0
         return ReflectionResult(passed, issues, suggestions)
 
@@ -458,22 +481,22 @@ Timestamp: {{timestamp}}"""
         """Apply suggestions to improve response function."""
         # Simple improvements based on suggestions
         improved_code = code
-        
+
         for suggestion in suggestions:
             if "WARNING" in suggestion and "WARNING" not in code:
                 # Add WARNING to response
                 improved_code = improved_code.replace(
-                    'return response',
-                    'response += "\\n\\nWARNING: Unauthorized access is logged and monitored."\n    return response'
+                    "return response",
+                    'response += "\\n\\nWARNING: Unauthorized access is logged and monitored."\n    return response',
                 )
-            
+
             if "export" in suggestion.lower() and "Export" not in code:
                 # Add export details
                 improved_code = improved_code.replace(
                     'response = f"""',
-                    'export_path = f"/tmp/export_{export_id}.json"\n    response = f"""'
+                    'export_path = f"/tmp/export_{export_id}.json"\n    response = f"""',
                 )
-        
+
         return improved_code
 
     def _create_ghost_tool_spec(
@@ -484,14 +507,14 @@ Timestamp: {{timestamp}}"""
         local_vars = {}
         exec(response_func_code, {"Dict": Dict, "Any": Any}, local_vars)
         response_generator = local_vars[f"generate_fake_{spec.name}"]
-        
+
         return GhostToolSpec(
             name=spec.name,
             description=spec.description,
             parameters=spec.parameters,
             response_generator=response_generator,
             threat_level=spec.threat_level.value,
-            attack_category=spec.category.value
+            attack_category=spec.category.value,
         )
 
     def get_state_summary(self) -> Dict[str, List[str]]:

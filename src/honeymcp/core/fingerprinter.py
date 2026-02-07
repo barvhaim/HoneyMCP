@@ -1,36 +1,169 @@
 """Attack fingerprinting - capture complete attack context."""
 
+import logging
+import time
+import threading
 from datetime import datetime
 from uuid import uuid4
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from honeymcp.models.events import AttackFingerprint
 from honeymcp.models.ghost_tool_spec import GhostToolSpec
 
-# Global session state tracking
-_session_tool_history: Dict[str, List[str]] = {}
-_attacker_detected: Dict[str, bool] = {}
+logger = logging.getLogger(__name__)
+
+
+class SessionStore:
+    """TTL-bounded session store that auto-evicts expired entries.
+
+    Prevents unbounded memory growth on long-running servers by:
+    - Expiring sessions after a configurable TTL (default: 1 hour)
+    - Capping the total number of tracked sessions (default: 10,000)
+    - Lazily evicting expired entries on access
+    - Periodically sweeping all entries every N writes
+    """
+
+    DEFAULT_TTL = 3600  # 1 hour
+    DEFAULT_MAX_SIZE = 10_000
+    _CLEANUP_INTERVAL = 100  # Full sweep every N writes
+
+    def __init__(
+        self,
+        ttl: int = DEFAULT_TTL,
+        max_size: int = DEFAULT_MAX_SIZE,
+    ) -> None:
+        self._ttl = ttl
+        self._max_size = max_size
+        self._attacker_detected: Dict[str, Tuple[bool, float]] = {}
+        self._tool_history: Dict[str, Tuple[List[str], float]] = {}
+        self._write_count = 0
+        self._lock = threading.Lock()
+
+    # -- internal helpers --------------------------------------------------
+
+    def _is_expired(self, timestamp: float) -> bool:
+        return (time.monotonic() - timestamp) > self._ttl
+
+    def _maybe_cleanup(self) -> None:
+        """Run a full sweep every ``_CLEANUP_INTERVAL`` writes."""
+        self._write_count += 1
+        if self._write_count % self._CLEANUP_INTERVAL == 0:
+            self._evict_expired()
+
+    def _evict_expired(self) -> None:
+        """Remove all expired entries and enforce max_size."""
+        now = time.monotonic()
+        self._attacker_detected = {
+            k: v for k, v in self._attacker_detected.items() if (now - v[1]) <= self._ttl
+        }
+        self._tool_history = {
+            k: v for k, v in self._tool_history.items() if (now - v[1]) <= self._ttl
+        }
+        # If still over max_size, evict oldest entries
+        for store in (self._attacker_detected, self._tool_history):
+            if len(store) > self._max_size:
+                sorted_keys = sorted(store, key=lambda k: store[k][1])
+                for key in sorted_keys[: len(store) - self._max_size]:
+                    del store[key]
+
+    # -- public API --------------------------------------------------------
+
+    def mark_attacker(self, session_id: str) -> None:
+        """Mark a session as having triggered a ghost tool."""
+        with self._lock:
+            self._attacker_detected[session_id] = (True, time.monotonic())
+            self._maybe_cleanup()
+
+    def is_attacker(self, session_id: str) -> bool:
+        """Check if a session has been flagged as an attacker."""
+        with self._lock:
+            entry = self._attacker_detected.get(session_id)
+            if entry is None:
+                return False
+            if self._is_expired(entry[1]):
+                del self._attacker_detected[session_id]
+                return False
+            return entry[0]
+
+    def record_tool(self, session_id: str, tool_name: str) -> None:
+        """Record a tool call in the session history."""
+        with self._lock:
+            entry = self._tool_history.get(session_id)
+            if entry is None or self._is_expired(entry[1]):
+                self._tool_history[session_id] = ([tool_name], time.monotonic())
+            else:
+                entry[0].append(tool_name)
+                self._tool_history[session_id] = (entry[0], time.monotonic())
+            self._maybe_cleanup()
+
+    def get_tool_history(self, session_id: str) -> List[str]:
+        """Get the tool call history for a session."""
+        with self._lock:
+            entry = self._tool_history.get(session_id)
+            if entry is None:
+                return []
+            if self._is_expired(entry[1]):
+                del self._tool_history[session_id]
+                return []
+            return list(entry[0])
+
+    @property
+    def session_count(self) -> int:
+        """Number of unique sessions currently tracked (for monitoring)."""
+        with self._lock:
+            keys = set(self._attacker_detected) | set(self._tool_history)
+            return len(keys)
+
+    def clear(self) -> None:
+        """Remove all session data (useful for testing)."""
+        with self._lock:
+            self._attacker_detected.clear()
+            self._tool_history.clear()
+            self._write_count = 0
+
+
+# Module-level session store instance
+_session_store = SessionStore()
+
+
+def configure_session_store(
+    ttl: int = SessionStore.DEFAULT_TTL,
+    max_size: int = SessionStore.DEFAULT_MAX_SIZE,
+) -> None:
+    """Replace the global session store with new settings.
+
+    Should be called once at startup (e.g. from ``honeypot()``).
+    """
+    global _session_store  # pylint: disable=global-statement
+    _session_store = SessionStore(ttl=ttl, max_size=max_size)
+    logger.info("Session store configured: ttl=%ss, max_size=%s", ttl, max_size)
+
+
+def get_session_store() -> SessionStore:
+    """Return the current module-level session store."""
+    return _session_store
+
+
+# -- Backward-compatible module-level functions ----------------------------
 
 
 def mark_attacker_detected(session_id: str) -> None:
     """Mark a session as having triggered a ghost tool (attacker detected)."""
-    _attacker_detected[session_id] = True
+    _session_store.mark_attacker(session_id)
 
 
 def is_attacker_detected(session_id: str) -> bool:
     """Check if this session has been flagged as an attacker."""
-    return _attacker_detected.get(session_id, False)
+    return _session_store.is_attacker(session_id)
 
 
 def record_tool_call(session_id: str, tool_name: str) -> None:
     """Record a tool call in the session history."""
-    if session_id not in _session_tool_history:
-        _session_tool_history[session_id] = []
-    _session_tool_history[session_id].append(tool_name)
+    _session_store.record_tool(session_id, tool_name)
 
 
 def get_session_tool_history(session_id: str) -> List[str]:
     """Get the tool call history for a session."""
-    return _session_tool_history.get(session_id, [])
+    return _session_store.get_tool_history(session_id)
 
 
 async def fingerprint_attack(

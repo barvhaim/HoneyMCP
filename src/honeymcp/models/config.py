@@ -80,6 +80,19 @@ class HoneyMCPConfig(BaseModel):
         description="Use static ghost tools if dynamic generation fails",
     )
 
+    # Session tracking limits
+    session_ttl: int = Field(
+        default=3600,
+        description="Session TTL in seconds. Expired sessions are evicted automatically.",
+        ge=60,
+    )
+
+    max_sessions: int = Field(
+        default=10_000,
+        description="Maximum number of tracked sessions before oldest are evicted.",
+        ge=100,
+    )
+
     @classmethod
     def from_yaml(cls, path: Union[str, Path]) -> "HoneyMCPConfig":
         """Load configuration from a YAML file.
@@ -147,6 +160,13 @@ class HoneyMCPConfig(BaseModel):
         dashboard = data.get("dashboard", {})
         if "enabled" in dashboard:
             config_dict["enable_dashboard"] = dashboard["enabled"]
+
+        # Session tracking section
+        sessions = data.get("sessions", {})
+        if "ttl" in sessions:
+            config_dict["session_ttl"] = sessions["ttl"]
+        if "max_size" in sessions:
+            config_dict["max_sessions"] = sessions["max_size"]
 
         return cls(**config_dict)
 
