@@ -1,6 +1,6 @@
 # 🍯 HoneyMCP
 
-<img src="images/logo.png" alt="HoneyMCP logo" width="300" height="300" />
+<img src="https://github.com/user-attachments/assets/34f18118-1490-4f06-af08-f2efb0ecec79" alt="HoneyMCP logo" width="300" height="300" />
 
 **Detect AI Agent Attacks Through Deception**
 
