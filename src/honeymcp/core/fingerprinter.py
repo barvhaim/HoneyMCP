@@ -35,6 +35,7 @@ class SessionStore:
         self._max_size = max_size
         self._attacker_detected: Dict[str, Tuple[bool, float]] = {}
         self._tool_history: Dict[str, Tuple[List[str], float]] = {}
+        self._call_timestamps: Dict[str, Tuple[List[float], float]] = {}
         self._write_count = 0
         self._lock = threading.Lock()
 
@@ -58,8 +59,11 @@ class SessionStore:
         self._tool_history = {
             k: v for k, v in self._tool_history.items() if (now - v[1]) <= self._ttl
         }
+        self._call_timestamps = {
+            k: v for k, v in self._call_timestamps.items() if (now - v[1]) <= self._ttl
+        }
         # If still over max_size, evict oldest entries
-        for store in (self._attacker_detected, self._tool_history):
+        for store in (self._attacker_detected, self._tool_history, self._call_timestamps):
             if len(store) > self._max_size:
                 sorted_keys = sorted(store, key=lambda k: store[k][1])
                 for key in sorted_keys[: len(store) - self._max_size]:
@@ -106,11 +110,27 @@ class SessionStore:
                 return []
             return list(entry[0])
 
+    def check_rate_limit(self, session_id: str, max_per_minute: int) -> bool:
+        """Check if session is within rate limit. Returns True if allowed, False if exceeded."""
+        now = time.monotonic()
+        with self._lock:
+            entry = self._call_timestamps.get(session_id)
+            if entry is None or self._is_expired(entry[1]):
+                self._call_timestamps[session_id] = ([now], now)
+                return True
+            timestamps, _ = entry
+            # Prune timestamps older than 60 seconds
+            cutoff = now - 60.0
+            timestamps = [t for t in timestamps if t > cutoff]
+            timestamps.append(now)
+            self._call_timestamps[session_id] = (timestamps, now)
+            return len(timestamps) <= max_per_minute
+
     @property
     def session_count(self) -> int:
         """Number of unique sessions currently tracked (for monitoring)."""
         with self._lock:
-            keys = set(self._attacker_detected) | set(self._tool_history)
+            keys = set(self._attacker_detected) | set(self._tool_history) | set(self._call_timestamps)
             return len(keys)
 
     def clear(self) -> None:
@@ -118,6 +138,7 @@ class SessionStore:
         with self._lock:
             self._attacker_detected.clear()
             self._tool_history.clear()
+            self._call_timestamps.clear()
             self._write_count = 0
 
 
@@ -164,6 +185,11 @@ def record_tool_call(session_id: str, tool_name: str) -> None:
 def get_session_tool_history(session_id: str) -> List[str]:
     """Get the tool call history for a session."""
     return _session_store.get_tool_history(session_id)
+
+
+def check_session_rate_limit(session_id: str, max_per_minute: int) -> bool:
+    """Check if session is within rate limit. Returns True if allowed, False if exceeded."""
+    return _session_store.check_rate_limit(session_id, max_per_minute)
 
 
 async def fingerprint_attack(

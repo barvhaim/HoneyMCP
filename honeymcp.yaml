@@ -56,6 +56,13 @@ alerting:
 storage:
   event_path: ~/.honeymcp/events  # Directory for attack event JSON files
 
+# Rate Limiting
+# -------------
+# Limit tool calls per session to detect/prevent automated scanners
+# rate_limit:
+#   max_calls_per_minute: 30   # null = no limit
+#   action: throttle            # "throttle" (delay) or "block" (error)
+
 # Dashboard
 # ---------
 # Real-time attack visualization

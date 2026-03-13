@@ -93,6 +93,16 @@ class HoneyMCPConfig(BaseModel):
         ge=100,
     )
 
+    # Rate limiting
+    rate_limit_max_calls_per_minute: Optional[int] = Field(
+        default=None,
+        description="Max tool calls per minute per session. None = no limit.",
+    )
+    rate_limit_action: str = Field(
+        default="throttle",
+        description="Action when rate limit exceeded: 'throttle' or 'block'.",
+    )
+
     @classmethod
     def from_yaml(cls, path: Union[str, Path]) -> "HoneyMCPConfig":
         """Load configuration from a YAML file.
@@ -167,6 +177,13 @@ class HoneyMCPConfig(BaseModel):
             config_dict["session_ttl"] = sessions["ttl"]
         if "max_size" in sessions:
             config_dict["max_sessions"] = sessions["max_size"]
+
+        # Rate limiting section
+        rate_limit = data.get("rate_limit", {})
+        if "max_calls_per_minute" in rate_limit:
+            config_dict["rate_limit_max_calls_per_minute"] = rate_limit["max_calls_per_minute"]
+        if "action" in rate_limit:
+            config_dict["rate_limit_action"] = rate_limit["action"]
 
         return cls(**config_dict)
 

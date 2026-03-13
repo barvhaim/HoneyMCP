@@ -10,6 +10,7 @@ from fastmcp.tools.tool import ToolResult
 from mcp.types import TextContent
 
 from honeymcp.core.fingerprinter import (
+    check_session_rate_limit,
     configure_session_store,
     fingerprint_attack,
     record_tool_call,
@@ -77,6 +78,8 @@ def honeypot_from_config(
         protection_mode=config.protection_mode,
         session_ttl=config.session_ttl,
         max_sessions=config.max_sessions,
+        rate_limit_max_calls_per_minute=config.rate_limit_max_calls_per_minute,
+        rate_limit_action=config.rate_limit_action,
     )
 
 
@@ -94,6 +97,8 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
     protection_mode: ProtectionMode = ProtectionMode.SCANNER,
     session_ttl: int = 3600,
     max_sessions: int = 10_000,
+    rate_limit_max_calls_per_minute: Optional[int] = None,
+    rate_limit_action: str = "throttle",
 ) -> FastMCP:
     """Wrap a FastMCP server with HoneyMCP deception capabilities.
 
@@ -153,6 +158,8 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
         protection_mode=protection_mode,
         session_ttl=session_ttl,
         max_sessions=max_sessions,
+        rate_limit_max_calls_per_minute=rate_limit_max_calls_per_minute,
+        rate_limit_action=rate_limit_action,
     )
 
     # Track ghost tool names for quick lookup
@@ -276,6 +283,18 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
 
         # Record all tool calls for sequence tracking
         record_tool_call(session_id, name)
+
+        # === Rate limiting ===
+        if config.rate_limit_max_calls_per_minute is not None:
+            if not check_session_rate_limit(session_id, config.rate_limit_max_calls_per_minute):
+                logger.warning("Rate limit exceeded for session %s", session_id)
+                if config.rate_limit_action == "block":
+                    return ToolResult(
+                        content=[TextContent(type="text", text="Error: Rate limit exceeded. Please slow down.")],
+                        meta={"is_error": True},
+                    )
+                else:  # throttle
+                    await asyncio.sleep(2.0)
 
         # === Protection mode handling for detected attackers ===
         if is_attacker_detected(session_id):
