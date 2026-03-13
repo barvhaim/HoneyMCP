@@ -149,6 +149,8 @@ class TestRateLimitConfig:
 class TestMiddlewareRateLimit:
     """Rate limiting behaviour inside the middleware interceptor."""
 
+    FIXED_SESSION = "test-session-fixed"
+
     @pytest.mark.asyncio
     async def test_block_action_returns_error(self):
         """When action=block and limit exceeded, ToolResult error is returned."""
@@ -172,18 +174,18 @@ class TestMiddlewareRateLimit:
             rate_limit_action="block",
         )
 
-        # First 2 calls should pass through
-        for _ in range(2):
-            result = await server.call_tool("echo", {"msg": "hi"})
-            # Should not be an error
-            if hasattr(result, "meta") and result.meta:
-                assert not result.meta.get("is_error", False)
+        with patch("honeymcp.core.middleware.resolve_session_id", return_value=self.FIXED_SESSION):
+            # First 2 calls should pass through
+            for _ in range(2):
+                result = await server.call_tool("echo", {"msg": "hi"})
+                if hasattr(result, "meta") and result.meta:
+                    assert not result.meta.get("is_error", False)
 
-        # 3rd call should be blocked
-        result = await server.call_tool("echo", {"msg": "hi"})
-        assert hasattr(result, "content")
-        assert "Rate limit exceeded" in result.content[0].text
-        assert result.meta["is_error"] is True
+            # 3rd call should be blocked
+            result = await server.call_tool("echo", {"msg": "hi"})
+            assert hasattr(result, "content")
+            assert "Rate limit exceeded" in result.content[0].text
+            assert result.meta["is_error"] is True
 
     @pytest.mark.asyncio
     async def test_throttle_action_adds_delay(self):
@@ -208,13 +210,14 @@ class TestMiddlewareRateLimit:
             rate_limit_action="throttle",
         )
 
-        # First call: within limit
-        await server.call_tool("echo", {"msg": "hi"})
-
-        # Second call: exceeds limit, should sleep
-        with patch("honeymcp.core.middleware.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        with patch("honeymcp.core.middleware.resolve_session_id", return_value=self.FIXED_SESSION):
+            # First call: within limit
             await server.call_tool("echo", {"msg": "hi"})
-            mock_sleep.assert_awaited_once_with(2.0)
+
+            # Second call: exceeds limit, should sleep
+            with patch("honeymcp.core.middleware.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+                await server.call_tool("echo", {"msg": "hi"})
+                mock_sleep.assert_awaited_once_with(2.0)
 
     @pytest.mark.asyncio
     async def test_no_rate_limit_when_not_configured(self):
@@ -238,8 +241,9 @@ class TestMiddlewareRateLimit:
             rate_limit_max_calls_per_minute=None,
         )
 
-        # Should be able to make many calls without issue
-        for _ in range(50):
-            result = await server.call_tool("echo", {"msg": "hi"})
-            if hasattr(result, "meta") and result.meta:
-                assert not result.meta.get("is_error", False)
+        with patch("honeymcp.core.middleware.resolve_session_id", return_value=self.FIXED_SESSION):
+            # Should be able to make many calls without issue
+            for _ in range(50):
+                result = await server.call_tool("echo", {"msg": "hi"})
+                if hasattr(result, "meta") and result.meta:
+                    assert not result.meta.get("is_error", False)
