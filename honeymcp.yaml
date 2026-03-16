@@ -55,6 +55,7 @@ alerting:
 # Configure where attack events are stored
 storage:
   event_path: ~/.honeymcp/events  # Directory for attack event JSON files
+  # max_age_days: 30              # Auto-delete events older than N days (null = keep forever)
 
 # Rate Limiting
 # -------------

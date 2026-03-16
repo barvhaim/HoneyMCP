@@ -24,7 +24,7 @@ from honeymcp.llm.analyzers import extract_tool_info
 from honeymcp.integrations.slack import build_slack_payload, send_slack_webhook
 from honeymcp.models.config import HoneyMCPConfig, resolve_event_storage_path
 from honeymcp.models.protection_mode import ProtectionMode
-from honeymcp.storage.event_store import store_event
+from honeymcp.storage.event_store import cleanup_old_events, store_event
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +80,7 @@ def honeypot_from_config(
         max_sessions=config.max_sessions,
         rate_limit_max_calls_per_minute=config.rate_limit_max_calls_per_minute,
         rate_limit_action=config.rate_limit_action,
+        max_age_days=config.max_age_days,
     )
 
 
@@ -99,6 +100,7 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
     max_sessions: int = 10_000,
     rate_limit_max_calls_per_minute: Optional[int] = None,
     rate_limit_action: str = "throttle",
+    max_age_days: Optional[int] = None,
 ) -> FastMCP:
     """Wrap a FastMCP server with HoneyMCP deception capabilities.
 
@@ -160,7 +162,21 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
         max_sessions=max_sessions,
         rate_limit_max_calls_per_minute=rate_limit_max_calls_per_minute,
         rate_limit_action=rate_limit_action,
+        max_age_days=max_age_days,
     )
+
+    # Auto-cleanup old events if max_age_days is configured
+    if config.max_age_days is not None:
+        try:
+            deleted = cleanup_old_events(config.event_storage_path, config.max_age_days)
+            if deleted > 0:
+                logger.info(
+                    "Cleaned up %d old event directories (max_age_days=%d)",
+                    deleted,
+                    config.max_age_days,
+                )
+        except Exception as e:
+            logger.warning("Event cleanup failed: %s", e)
 
     # Track ghost tool names for quick lookup
     ghost_tool_names = set()

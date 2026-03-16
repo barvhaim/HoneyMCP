@@ -47,6 +47,12 @@ class HoneyMCPConfig(BaseModel):
         description="Directory for storing attack event JSON files",
     )
 
+    max_age_days: Optional[int] = Field(
+        default=None,
+        description="Auto-delete event directories older than this many days. None = keep forever.",
+        ge=1,
+    )
+
     enable_dashboard: bool = Field(default=True, description="Enable Streamlit dashboard")
 
     webhook_url: Optional[str] = Field(default=None, description="Webhook URL for attack alerts")
@@ -165,6 +171,8 @@ class HoneyMCPConfig(BaseModel):
             path_str = storage["event_path"]
             # Expand ~ to home directory
             config_dict["event_storage_path"] = Path(os.path.expanduser(path_str))
+        if "max_age_days" in storage:
+            config_dict["max_age_days"] = storage["max_age_days"]
 
         # Dashboard section
         dashboard = data.get("dashboard", {})
