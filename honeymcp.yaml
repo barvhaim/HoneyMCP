@@ -64,6 +64,14 @@ storage:
 #   max_calls_per_minute: 30   # null = no limit
 #   action: throttle            # "throttle" (delay) or "block" (error)
 
+# Allowlist
+# ---------
+# Sessions that bypass ghost tool detection (for testing/monitoring)
+# allowlist:
+#   session_ids:
+#     - "health-check-bot"
+#     - "qa-pipeline"
+
 # Dashboard
 # ---------
 # Real-time attack visualization

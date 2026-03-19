@@ -109,6 +109,12 @@ class HoneyMCPConfig(BaseModel):
         description="Action when rate limit exceeded: 'throttle' or 'block'.",
     )
 
+    # Allowlist
+    allowlist_session_ids: List[str] = Field(
+        default_factory=list,
+        description="Session IDs that bypass ghost tool detection entirely.",
+    )
+
     @classmethod
     def from_yaml(cls, path: Union[str, Path]) -> "HoneyMCPConfig":
         """Load configuration from a YAML file.
@@ -192,6 +198,11 @@ class HoneyMCPConfig(BaseModel):
             config_dict["rate_limit_max_calls_per_minute"] = rate_limit["max_calls_per_minute"]
         if "action" in rate_limit:
             config_dict["rate_limit_action"] = rate_limit["action"]
+
+        # Allowlist section
+        allowlist = data.get("allowlist", {})
+        if "session_ids" in allowlist:
+            config_dict["allowlist_session_ids"] = allowlist["session_ids"]
 
         return cls(**config_dict)
 

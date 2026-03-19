@@ -81,6 +81,7 @@ def honeypot_from_config(
         rate_limit_max_calls_per_minute=config.rate_limit_max_calls_per_minute,
         rate_limit_action=config.rate_limit_action,
         max_age_days=config.max_age_days,
+        allowlist_session_ids=config.allowlist_session_ids,
     )
 
 
@@ -101,6 +102,7 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
     rate_limit_max_calls_per_minute: Optional[int] = None,
     rate_limit_action: str = "throttle",
     max_age_days: Optional[int] = None,
+    allowlist_session_ids: Optional[List[str]] = None,
 ) -> FastMCP:
     """Wrap a FastMCP server with HoneyMCP deception capabilities.
 
@@ -163,7 +165,11 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
         rate_limit_max_calls_per_minute=rate_limit_max_calls_per_minute,
         rate_limit_action=rate_limit_action,
         max_age_days=max_age_days,
+        allowlist_session_ids=allowlist_session_ids or [],
     )
+
+    # Convert allowlist to set for O(1) lookup
+    allowlist_set = set(config.allowlist_session_ids)
 
     # Auto-cleanup old events if max_age_days is configured
     if config.max_age_days is not None:
@@ -299,6 +305,12 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
 
         # Record all tool calls for sequence tracking
         record_tool_call(session_id, name)
+
+        # === Allowlist bypass ===
+        if session_id in allowlist_set:
+            if original_call_tool:
+                return await original_call_tool(name, resolved_arguments, *remaining_args, **kwargs)
+            return await _call_tool_directly(server, name, resolved_arguments)
 
         # === Rate limiting ===
         if config.rate_limit_max_calls_per_minute is not None:
