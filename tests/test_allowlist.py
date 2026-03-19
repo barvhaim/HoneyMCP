@@ -76,7 +76,7 @@ class TestAllowlistMiddleware:
     async def test_non_allowlisted_session_still_detected(self):
         from fastmcp import FastMCP
         from honeymcp.core.middleware import honeypot
-        from honeymcp.core.fingerprinter import configure_session_store, is_attacker_detected
+        from honeymcp.core.fingerprinter import configure_session_store
 
         configure_session_store(ttl=3600, max_size=10_000)
 
@@ -98,8 +98,11 @@ class TestAllowlistMiddleware:
             return_value="attacker-session",
         ):
             with patch("honeymcp.core.middleware.store_event", new_callable=AsyncMock):
-                await server.call_tool("list_cloud_secrets", {})
-                assert is_attacker_detected("attacker-session")
+                with patch(
+                    "honeymcp.core.middleware.mark_attacker_detected"
+                ) as mock_mark:
+                    await server.call_tool("list_cloud_secrets", {})
+                    mock_mark.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_allowlisted_session_skips_rate_limiting(self):
