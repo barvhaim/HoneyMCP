@@ -11,13 +11,17 @@ from mcp.types import TextContent
 
 from honeymcp.core.fingerprinter import (
     check_session_rate_limit,
-    configure_session_store,
+    configure_session_backend,
     fingerprint_attack,
     record_tool_call,
     mark_attacker_detected,
     is_attacker_detected,
     resolve_session_id,
 )
+from honeymcp.storage.session_backend import SessionBackend
+from honeymcp.storage.memory_backend import InMemorySessionBackend
+from honeymcp.storage.redis_backend import RedisSessionBackend
+from honeymcp.storage.sqlite_backend import SQLiteSessionBackend
 from honeymcp.core.ghost_tools import GHOST_TOOL_CATALOG, get_ghost_tool
 from honeymcp.core.dynamic_ghost_tools import DynamicGhostToolGenerator, DynamicGhostToolSpec
 from honeymcp.llm.analyzers import extract_tool_info
@@ -82,6 +86,9 @@ def honeypot_from_config(
         rate_limit_action=config.rate_limit_action,
         max_age_days=config.max_age_days,
         allowlist_session_ids=config.allowlist_session_ids,
+        session_backend_type=config.session_backend_type,
+        redis_url=config.redis_url,
+        sqlite_path=config.sqlite_path,
     )
 
 
@@ -103,6 +110,9 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
     rate_limit_action: str = "throttle",
     max_age_days: Optional[int] = None,
     allowlist_session_ids: Optional[List[str]] = None,
+    session_backend_type: str = "memory",
+    redis_url: str = "redis://localhost:6379",
+    sqlite_path: Optional[Path] = None,
 ) -> FastMCP:
     """Wrap a FastMCP server with HoneyMCP deception capabilities.
 
@@ -145,8 +155,31 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
     Returns:
         The wrapped FastMCP server with honeypot capabilities
     """
-    # Configure session store with TTL and size bounds
-    configure_session_store(ttl=session_ttl, max_size=max_sessions)
+    # Initialize session backend based on configuration
+    if session_backend_type == "redis":
+        try:
+            backend = RedisSessionBackend(redis_url=redis_url, ttl=session_ttl)
+            logger.info("Using Redis session backend: %s", redis_url)
+        except ImportError as e:
+            logger.error("Redis backend not available: %s", e)
+            if session_backend_type == "redis":
+                raise
+    elif session_backend_type == "sqlite":
+        try:
+            db_path = sqlite_path or (Path.home() / ".honeymcp" / "sessions.db")
+            backend = SQLiteSessionBackend(db_path=db_path, ttl=session_ttl)
+            logger.info("Using SQLite session backend: %s", db_path)
+        except ImportError as e:
+            logger.error("SQLite backend not available: %s", e)
+            if session_backend_type == "sqlite":
+                raise
+    else:
+        # Default to in-memory backend
+        backend = InMemorySessionBackend(ttl=session_ttl, max_size=max_sessions)
+        logger.info("Using in-memory session backend")
+    
+    # Configure the global session backend
+    configure_session_backend(backend)
 
     # Build configuration
     config = HoneyMCPConfig(

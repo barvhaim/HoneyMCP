@@ -115,6 +115,22 @@ class HoneyMCPConfig(BaseModel):
         description="Session IDs that bypass ghost tool detection entirely.",
     )
 
+    # Session backend configuration
+    session_backend_type: str = Field(
+        default="memory",
+        description="Session backend type: 'memory', 'redis', or 'sqlite'",
+    )
+
+    redis_url: str = Field(
+        default="redis://localhost:6379",
+        description="Redis connection URL (used when session_backend_type='redis')",
+    )
+
+    sqlite_path: Path = Field(
+        default_factory=lambda: Path.home() / ".honeymcp" / "sessions.db",
+        description="SQLite database path (used when session_backend_type='sqlite')",
+    )
+
     @classmethod
     def from_yaml(cls, path: Union[str, Path]) -> "HoneyMCPConfig":
         """Load configuration from a YAML file.
@@ -203,6 +219,16 @@ class HoneyMCPConfig(BaseModel):
         allowlist = data.get("allowlist", {})
         if "session_ids" in allowlist:
             config_dict["allowlist_session_ids"] = allowlist["session_ids"]
+
+        # Session backend section
+        session_backend = data.get("session_backend", {})
+        if "type" in session_backend:
+            config_dict["session_backend_type"] = session_backend["type"]
+        if "redis_url" in session_backend:
+            config_dict["redis_url"] = session_backend["redis_url"]
+        if "sqlite_path" in session_backend:
+            path_str = session_backend["sqlite_path"]
+            config_dict["sqlite_path"] = Path(os.path.expanduser(path_str))
 
         return cls(**config_dict)
 
