@@ -15,7 +15,9 @@ from pydantic import BaseModel, Field
 
 from honeymcp.models.config import HoneyMCPConfig
 from honeymcp.models.events import AttackFingerprint
+from honeymcp.models.attack_patterns import AttackPattern, AttackerProfile, PatternSummary
 from honeymcp.storage.event_store import clear_events, get_event, list_events
+from honeymcp.analysis.pattern_detector import PatternDetector
 
 
 class EventListResponse(BaseModel):
@@ -224,6 +226,153 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
             categories=categories,
             tools=tools,
         )
+
+    @app.get("/patterns", response_model=List[AttackPattern])
+    async def get_patterns(
+        pattern_type: Optional[str] = Query(default=None, description="Filter by pattern type: coordinated, campaign, anomaly"),
+        min_confidence: float = Query(default=0.5, ge=0.0, le=1.0, description="Minimum confidence score"),
+        start_date: Optional[date] = Query(default=None),
+        end_date: Optional[date] = Query(default=None),
+    ) -> List[AttackPattern]:
+        """Get detected attack patterns with optional filtering."""
+        events = await list_events(
+            storage_path=app.state.event_storage_path,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        
+        if not events:
+            return []
+        
+        detector = PatternDetector()
+        
+        # Run all detection algorithms
+        all_patterns = []
+        all_patterns.extend(await detector.detect_coordinated_attacks(events))
+        all_patterns.extend(await detector.detect_attack_campaigns(events))
+        all_patterns.extend(await detector.detect_anomalies(events))
+        
+        # Filter by type and confidence
+        filtered = [
+            p for p in all_patterns
+            if p.confidence >= min_confidence
+            and (pattern_type is None or p.pattern_type == pattern_type)
+        ]
+        
+        # Sort by confidence (highest first)
+        filtered.sort(key=lambda p: p.confidence, reverse=True)
+        
+        return filtered
+
+    @app.get("/patterns/summary", response_model=PatternSummary)
+    async def get_pattern_summary(
+        start_date: Optional[date] = Query(default=None),
+        end_date: Optional[date] = Query(default=None),
+    ) -> PatternSummary:
+        """Get summary statistics for detected patterns."""
+        events = await list_events(
+            storage_path=app.state.event_storage_path,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        
+        if not events:
+            return PatternSummary(
+                total_patterns=0,
+                by_type={},
+                by_severity={},
+                high_confidence_count=0,
+                recent_patterns=[],
+            )
+        
+        detector = PatternDetector()
+        
+        # Run all detection algorithms
+        all_patterns = []
+        all_patterns.extend(await detector.detect_coordinated_attacks(events))
+        all_patterns.extend(await detector.detect_attack_campaigns(events))
+        all_patterns.extend(await detector.detect_anomalies(events))
+        
+        # Calculate summary statistics
+        by_type: Dict[str, int] = {}
+        by_severity: Dict[str, int] = {}
+        high_confidence_count = 0
+        
+        for pattern in all_patterns:
+            by_type[pattern.pattern_type] = by_type.get(pattern.pattern_type, 0) + 1
+            by_severity[pattern.severity] = by_severity.get(pattern.severity, 0) + 1
+            if pattern.confidence >= 0.8:
+                high_confidence_count += 1
+        
+        # Get most recent patterns (last 10)
+        sorted_patterns = sorted(all_patterns, key=lambda p: p.last_seen, reverse=True)
+        recent_patterns = sorted_patterns[:10]
+        
+        return PatternSummary(
+            total_patterns=len(all_patterns),
+            by_type=by_type,
+            by_severity=by_severity,
+            high_confidence_count=high_confidence_count,
+            recent_patterns=recent_patterns,
+        )
+
+    @app.get("/profiles/{session_id}", response_model=AttackerProfile)
+    async def get_attacker_profile(
+        session_id: str,
+        start_date: Optional[date] = Query(default=None),
+        end_date: Optional[date] = Query(default=None),
+    ) -> AttackerProfile:
+        """Get behavioral profile for a specific attacker session."""
+        events = await list_events(
+            storage_path=app.state.event_storage_path,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        
+        detector = PatternDetector()
+        
+        try:
+            profile = await detector.build_attacker_profile(session_id, events)
+            return profile
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+
+    @app.get("/profiles", response_model=List[AttackerProfile])
+    async def get_all_profiles(
+        min_sophistication: float = Query(default=0.0, ge=0.0, le=1.0, description="Minimum sophistication score"),
+        start_date: Optional[date] = Query(default=None),
+        end_date: Optional[date] = Query(default=None),
+        limit: int = Query(default=50, ge=1, le=200),
+    ) -> List[AttackerProfile]:
+        """Get behavioral profiles for all attacker sessions."""
+        events = await list_events(
+            storage_path=app.state.event_storage_path,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        
+        if not events:
+            return []
+        
+        # Get unique session IDs
+        session_ids = list(set(e.session_id for e in events))
+        
+        detector = PatternDetector()
+        profiles = []
+        
+        # Build profile for each session
+        for session_id in session_ids:
+            try:
+                profile = await detector.build_attacker_profile(session_id, events)
+                if profile.sophistication_score >= min_sophistication:
+                    profiles.append(profile)
+            except ValueError:
+                continue
+        
+        # Sort by sophistication (highest first)
+        profiles.sort(key=lambda p: p.sophistication_score, reverse=True)
+        
+        return profiles[:limit]
 
     return app
 
