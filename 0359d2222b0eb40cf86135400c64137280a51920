@@ -1,0 +1,7 @@
+{"id":"e83ae04b-e3e0-445c-9290-0e37d0a980ad","ts":"2026-03-28T12:41:19.965Z","path":"/Users/alon/dev/venues/HoneyMCP/src/honeymcp/models/attack_patterns.py","version":"1.0.0","taskID":"75ab41cf-be13-4761-bfdf-02a8c987b2ec"}
+{"id":"7ddb6d4f-8b2e-4753-8636-d810b033b528","ts":"2026-03-28T12:41:27.833Z","path":"/Users/alon/dev/venues/HoneyMCP/src/honeymcp/analysis/__init__.py","version":"1.0.0","taskID":"75ab41cf-be13-4761-bfdf-02a8c987b2ec"}
+{"id":"cbff5c62-d766-499f-a0c8-a08df4fea210","ts":"2026-03-28T12:42:22.608Z","path":"/Users/alon/dev/venues/HoneyMCP/src/honeymcp/analysis/pattern_detector.py","version":"1.0.0","taskID":"75ab41cf-be13-4761-bfdf-02a8c987b2ec"}
+{"id":"221ac684-e031-448f-9863-cc278f81cbd8","ts":"2026-03-28T12:42:32.208Z","path":"/Users/alon/dev/venues/HoneyMCP/src/honeymcp/api/app.py","version":"1.0.0","taskID":"75ab41cf-be13-4761-bfdf-02a8c987b2ec"}
+{"id":"d6ec0c96-c468-475b-bb08-394e729feef8","ts":"2026-03-28T12:42:51.667Z","path":"/Users/alon/dev/venues/HoneyMCP/src/honeymcp/api/app.py","version":"1.0.0","taskID":"75ab41cf-be13-4761-bfdf-02a8c987b2ec"}
+{"id":"ebde2858-240b-4e32-bdd7-3c7f341bb78d","ts":"2026-03-28T12:43:43.483Z","path":"/Users/alon/dev/venues/HoneyMCP/tests/test_pattern_detection.py","version":"1.0.0","taskID":"75ab41cf-be13-4761-bfdf-02a8c987b2ec"}
+{"id":"ff3d76c1-337e-414f-8e8b-02a57edadd00","ts":"2026-03-28T12:44:46.353Z","path":"/Users/alon/dev/venues/HoneyMCP/docs/pattern-analysis.md","version":"1.0.0","taskID":"75ab41cf-be13-4761-bfdf-02a8c987b2ec"}
