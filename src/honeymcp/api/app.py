@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -18,6 +18,7 @@ from honeymcp.models.events import AttackFingerprint
 from honeymcp.models.attack_patterns import AttackPattern, AttackerProfile, PatternSummary
 from honeymcp.storage.event_store import clear_events, get_event, list_events
 from honeymcp.analysis.pattern_detector import PatternDetector
+from honeymcp.integrations.streaming import StreamManager
 
 
 class EventListResponse(BaseModel):
@@ -373,6 +374,57 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
         profiles.sort(key=lambda p: p.sophistication_score, reverse=True)
         
         return profiles[:limit]
+
+    @app.get("/stream")
+    async def event_stream(
+        event_types: Optional[str] = Query(
+            default=None,
+            description="Comma-separated event types to filter (attack,pattern,alert)"
+        ),
+        send_history: bool = Query(
+            default=True,
+            description="Whether to send historical events first"
+        ),
+    ) -> StreamingResponse:
+        """Server-Sent Events (SSE) stream for real-time updates.
+        
+        Subscribe to receive real-time notifications of:
+        - Attack events as they occur
+        - Detected patterns (coordinated, campaigns, anomalies)
+        - Alert notifications
+        
+        Example:
+            GET /stream?event_types=attack,pattern&send_history=true
+        """
+        import uuid
+        
+        # Initialize stream if not already done
+        stream = StreamManager.get_stream()
+        if stream is None:
+            stream = StreamManager.initialize(max_history=100)
+        
+        # Generate unique client ID
+        client_id = f"client_{uuid.uuid4().hex[:12]}"
+        
+        # Parse event types filter
+        event_type_list = None
+        if event_types:
+            event_type_list = [t.strip() for t in event_types.split(",") if t.strip()]
+        
+        # Create streaming response
+        return StreamingResponse(
+            stream.subscribe(
+                client_id=client_id,
+                event_types=event_type_list,
+                send_history=send_history,
+            ),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",  # Disable nginx buffering
+            },
+        )
 
     return app
 
