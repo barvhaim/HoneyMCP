@@ -1,0 +1,10 @@
+{"id":"d48b466b-082d-45e0-b1d2-76b2381fa57f","ts":"2026-03-29T07:23:25.107Z","path":"/Users/alon/dev/venues/HoneyMCP/src/honeymcp/models/alerts.py","version":"1.0.0","taskID":"75ab41cf-be13-4761-bfdf-02a8c987b2ec"}
+{"id":"70359c55-2460-4a6a-b7df-96b240b097f1","ts":"2026-03-29T07:24:08.107Z","path":"/Users/alon/dev/venues/HoneyMCP/src/honeymcp/integrations/alerting.py","version":"1.0.0","taskID":"75ab41cf-be13-4761-bfdf-02a8c987b2ec"}
+{"id":"c82cf910-b278-4594-81cd-c5eb419d12f4","ts":"2026-03-29T07:24:56.888Z","path":"/Users/alon/dev/venues/HoneyMCP/src/honeymcp/integrations/notifiers.py","version":"1.0.0","taskID":"75ab41cf-be13-4761-bfdf-02a8c987b2ec"}
+{"id":"974c1fdf-354e-4d85-a1a6-3631e8c5c272","ts":"2026-03-29T07:25:28.331Z","path":"/Users/alon/dev/venues/HoneyMCP/src/honeymcp/integrations/streaming.py","version":"1.0.0","taskID":"75ab41cf-be13-4761-bfdf-02a8c987b2ec"}
+{"id":"27bfd4ec-8e02-4f9f-9c5b-639f40d3b67f","ts":"2026-03-29T07:25:37.450Z","path":"/Users/alon/dev/venues/HoneyMCP/src/honeymcp/api/app.py","version":"1.0.0","taskID":"75ab41cf-be13-4761-bfdf-02a8c987b2ec"}
+{"id":"56903ea6-532a-42ff-a720-d5cf9cf37360","ts":"2026-03-29T07:25:51.037Z","path":"/Users/alon/dev/venues/HoneyMCP/src/honeymcp/api/app.py","version":"1.0.0","taskID":"75ab41cf-be13-4761-bfdf-02a8c987b2ec"}
+{"id":"78887139-c36c-452b-a595-837d68ecf80e","ts":"2026-03-29T07:26:04.955Z","path":"/Users/alon/dev/venues/HoneyMCP/src/honeymcp/api/app.py","version":"1.0.0","taskID":"75ab41cf-be13-4761-bfdf-02a8c987b2ec"}
+{"id":"538c96fc-6384-441b-ada9-29e80a4b9db2","ts":"2026-03-29T07:26:52.343Z","path":"/Users/alon/dev/venues/HoneyMCP/tests/test_alerting.py","version":"1.0.0","taskID":"75ab41cf-be13-4761-bfdf-02a8c987b2ec"}
+{"id":"e5fcde01-4ac5-4612-bd8b-1a06379f073d","ts":"2026-03-29T07:27:25.474Z","path":"/Users/alon/dev/venues/HoneyMCP/tests/test_streaming.py","version":"1.0.0","taskID":"75ab41cf-be13-4761-bfdf-02a8c987b2ec"}
+{"id":"e0e69628-d23d-4155-a9dd-fa7f1264f5bb","ts":"2026-03-29T07:28:40.397Z","path":"/Users/alon/dev/venues/HoneyMCP/docs/streaming-and-alerting.md","version":"1.0.0","taskID":"75ab41cf-be13-4761-bfdf-02a8c987b2ec"}
