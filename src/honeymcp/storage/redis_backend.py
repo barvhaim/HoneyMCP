@@ -2,7 +2,10 @@
 
 import json
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
+
+if TYPE_CHECKING:
+    import redis.asyncio as redis
 
 try:
     import redis.asyncio as redis
@@ -56,9 +59,9 @@ class RedisSessionBackend(SessionBackend):
         self.redis_url = redis_url
         self.ttl = ttl
         self.prefix = key_prefix
-        self._client: Optional[redis.Redis] = None
+        self._client: Optional[Any] = None
 
-    async def _get_client(self) -> redis.Redis:
+    async def _get_client(self) -> Any:
         """Get or create Redis client."""
         if self._client is None:
             self._client = await redis.from_url(

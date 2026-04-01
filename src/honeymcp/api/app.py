@@ -16,9 +16,19 @@ from pydantic import BaseModel, Field
 from honeymcp.models.config import HoneyMCPConfig
 from honeymcp.models.events import AttackFingerprint
 from honeymcp.models.attack_patterns import AttackPattern, AttackerProfile, PatternSummary
+from honeymcp.models.forensics import (
+    AttackTimeline,
+    ExportFormat,
+    ForensicReport,
+    ReplayControl,
+    ReplayState,
+)
 from honeymcp.storage.event_store import clear_events, get_event, list_events
 from honeymcp.analysis.pattern_detector import PatternDetector
 from honeymcp.integrations.streaming import StreamManager
+from honeymcp.forensics.replay_engine import ReplayEngine
+from honeymcp.forensics.report_generator import ReportGenerator
+from honeymcp.forensics.exporters import ForensicsExporter
 
 
 class EventListResponse(BaseModel):
@@ -132,6 +142,11 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
     app.state.event_storage_path = config.event_storage_path
     dashboard_root = Path(__file__).resolve().parent.parent / "dashboard" / "react_umd"
     app.state.dashboard_root = dashboard_root
+    
+    # Initialize forensics components
+    app.state.replay_engine = ReplayEngine()
+    app.state.report_generator = ReportGenerator()
+    app.state.forensics_exporter = ForensicsExporter()
 
     if dashboard_root.exists():
         app.mount(
@@ -430,3 +445,170 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
 
 
 app = create_app()
+
+
+    # ==================== Forensics & Replay Endpoints ====================
+    
+    @app.post("/replay/start", response_model=dict)
+    async def start_replay(
+        session_id: str = Query(..., description="Session ID to replay"),
+    ) -> dict:
+        """Start a new replay session for an attack."""
+        # Get events for session
+        events = await list_events(
+            storage_path=app.state.event_storage_path,
+            session_id=session_id,
+        )
+        
+        if not events:
+            raise HTTPException(status_code=404, detail=f"No events found for session {session_id}")
+        
+        # Create timeline
+        timeline = await app.state.replay_engine.create_timeline(events)
+        
+        # Start replay
+        replay_id = await app.state.replay_engine.start_replay(timeline)
+        
+        return {
+            "replay_id": replay_id,
+            "session_id": session_id,
+            "event_count": len(events),
+            "duration_seconds": timeline.duration_seconds,
+        }
+    
+    @app.post("/replay/{replay_id}/control", response_model=ReplayState)
+    async def control_replay(
+        replay_id: str,
+        control: ReplayControl,
+    ) -> ReplayState:
+        """Control replay session (play, pause, seek, speed)."""
+        try:
+            state = await app.state.replay_engine.control_replay(replay_id, control)
+            return state
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+    
+    @app.get("/replay/{replay_id}/state", response_model=ReplayState)
+    async def get_replay_state(replay_id: str) -> ReplayState:
+        """Get current state of replay session."""
+        try:
+            return app.state.replay_engine.get_state(replay_id)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+    
+    @app.delete("/replay/{replay_id}")
+    async def stop_replay(replay_id: str) -> dict:
+        """Stop and remove replay session."""
+        await app.state.replay_engine.stop_replay(replay_id)
+        return {"message": f"Replay session {replay_id} stopped"}
+    
+    @app.get("/replay/active", response_model=List[str])
+    async def list_active_replays() -> List[str]:
+        """List all active replay sessions."""
+        return app.state.replay_engine.list_active_replays()
+    
+    @app.post("/reports/generate", response_model=ForensicReport)
+    async def generate_report(
+        session_id: str = Query(..., description="Session ID to analyze"),
+        analyst_notes: Optional[str] = Query(default=None, description="Optional analyst notes"),
+    ) -> ForensicReport:
+        """Generate forensic report for an attack session."""
+        # Get events for session
+        events = await list_events(
+            storage_path=app.state.event_storage_path,
+            session_id=session_id,
+        )
+        
+        if not events:
+            raise HTTPException(status_code=404, detail=f"No events found for session {session_id}")
+        
+        # Create timeline
+        timeline = await app.state.replay_engine.create_timeline(events)
+        
+        # Generate report
+        report = await app.state.report_generator.generate_report(
+            timeline=timeline,
+            analyst_notes=analyst_notes,
+        )
+        
+        return report
+    
+    @app.post("/reports/compare", response_model=dict)
+    async def compare_sessions(
+        session_ids: List[str] = Query(..., description="Session IDs to compare"),
+    ) -> dict:
+        """Generate comparison report for multiple sessions."""
+        if len(session_ids) < 2:
+            raise HTTPException(status_code=400, detail="Need at least 2 sessions for comparison")
+        
+        timelines = []
+        for session_id in session_ids:
+            events = await list_events(
+                storage_path=app.state.event_storage_path,
+                session_id=session_id,
+            )
+            
+            if not events:
+                raise HTTPException(status_code=404, detail=f"No events found for session {session_id}")
+            
+            timeline = await app.state.replay_engine.create_timeline(events)
+            timelines.append(timeline)
+        
+        # Generate comparison
+        comparison = await app.state.report_generator.compare_sessions(timelines)
+        
+        return comparison.model_dump(mode='json')
+    
+    @app.get("/export/timeline/{session_id}")
+    async def export_timeline(
+        session_id: str,
+        format: ExportFormat = Query(default=ExportFormat.JSON, description="Export format"),
+    ) -> Response:
+        """Export attack timeline in specified format."""
+        # Get events for session
+        events = await list_events(
+            storage_path=app.state.event_storage_path,
+            session_id=session_id,
+        )
+        
+        if not events:
+            raise HTTPException(status_code=404, detail=f"No events found for session {session_id}")
+        
+        # Create timeline
+        timeline = await app.state.replay_engine.create_timeline(events)
+        
+        # Export
+        content = await app.state.forensics_exporter.export_timeline(timeline, format)
+        
+        # Set content type and filename
+        content_types = {
+            ExportFormat.JSON: "application/json",
+            ExportFormat.CSV: "text/csv",
+            ExportFormat.HTML: "text/html",
+            ExportFormat.STIX: "application/json",
+        }
+        
+        extensions = {
+            ExportFormat.JSON: "json",
+            ExportFormat.CSV: "csv",
+            ExportFormat.HTML: "html",
+            ExportFormat.STIX: "json",
+        }
+        
+        return Response(
+            content=content,
+            media_type=content_types[format],
+            headers={
+                "Content-Disposition": f'attachment; filename="timeline_{session_id}.{extensions[format]}"'
+            },
+        )
+    
+    @app.get("/export/report/{report_id}")
+    async def export_report(
+        report_id: str,
+        format: ExportFormat = Query(default=ExportFormat.HTML, description="Export format"),
+    ) -> Response:
+        """Export forensic report in specified format."""
+        # Note: In a real implementation, you'd store reports and retrieve them
+        # For now, we'll generate on-the-fly from session_id embedded in report_id
+        raise HTTPException(status_code=501, detail="Report export not yet implemented - use /reports/generate and save the response")
