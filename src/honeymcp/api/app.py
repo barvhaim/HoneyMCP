@@ -606,6 +606,179 @@ app = create_app()
     @app.get("/export/report/{report_id}")
     async def export_report(
         report_id: str,
+
+    # ==================== Adaptive Tools Endpoints ====================
+    
+    @app.get("/adaptive/metrics", response_model=Dict[str, any])
+    async def get_effectiveness_metrics(
+        tool_name: Optional[str] = Query(default=None, description="Specific tool name"),
+    ) -> Dict[str, any]:
+        """Get effectiveness metrics for tools."""
+        if not hasattr(app.state, 'effectiveness_tracker'):
+            raise HTTPException(status_code=501, detail="Adaptive tools not enabled")
+        
+        tracker = app.state.effectiveness_tracker
+        
+        if tool_name:
+            metric = tracker.get_metric(tool_name)
+            if not metric:
+                raise HTTPException(status_code=404, detail=f"No metrics for tool: {tool_name}")
+            return metric.model_dump(mode='json')
+        else:
+            metrics = tracker.get_all_metrics()
+            return {
+                "metrics": {name: m.model_dump(mode='json') for name, m in metrics.items()},
+                "statistics": await tracker.get_statistics(),
+            }
+    
+    @app.get("/adaptive/top-tools", response_model=List[Dict[str, any]])
+    async def get_top_tools(
+        n: int = Query(default=10, ge=1, le=50, description="Number of tools to return"),
+    ) -> List[Dict[str, any]]:
+        """Get top performing tools."""
+        if not hasattr(app.state, 'effectiveness_tracker'):
+            raise HTTPException(status_code=501, detail="Adaptive tools not enabled")
+        
+        tracker = app.state.effectiveness_tracker
+        top_tools = tracker.get_top_tools(n)
+        
+        return [tool.model_dump(mode='json') for tool in top_tools]
+    
+    @app.get("/adaptive/recommendations", response_model=Dict[str, any])
+    async def get_catalog_recommendations() -> Dict[str, any]:
+        """Get recommendations for catalog optimization."""
+        if not hasattr(app.state, 'catalog_optimizer'):
+            raise HTTPException(status_code=501, detail="Adaptive tools not enabled")
+        
+        optimizer = app.state.catalog_optimizer
+        
+        # Get current tools from catalog
+        from honeymcp.core.ghost_tools import list_ghost_tools
+        current_tools = list_ghost_tools()
+        
+        # Generate recommendations
+        recommendation = await optimizer.analyze_catalog(current_tools)
+        
+        return recommendation.model_dump(mode='json')
+    
+    @app.post("/adaptive/snapshot", response_model=Dict[str, any])
+    async def create_catalog_snapshot() -> Dict[str, any]:
+        """Create snapshot of current catalog state."""
+        if not hasattr(app.state, 'catalog_optimizer'):
+            raise HTTPException(status_code=501, detail="Adaptive tools not enabled")
+        
+        optimizer = app.state.catalog_optimizer
+        
+        # Get current tools
+        from honeymcp.core.ghost_tools import list_ghost_tools
+        current_tools = list_ghost_tools()
+        
+        # Create snapshot
+        snapshot = await optimizer.create_snapshot(current_tools)
+        
+        return snapshot.model_dump(mode='json')
+    
+    @app.get("/adaptive/snapshots", response_model=List[Dict[str, any]])
+    async def get_catalog_snapshots(
+        limit: int = Query(default=10, ge=1, le=100, description="Maximum snapshots to return"),
+    ) -> List[Dict[str, any]]:
+        """Get historical catalog snapshots."""
+        if not hasattr(app.state, 'catalog_optimizer'):
+            raise HTTPException(status_code=501, detail="Adaptive tools not enabled")
+        
+        optimizer = app.state.catalog_optimizer
+        snapshots = optimizer.get_snapshots(limit=limit)
+        
+        return [s.model_dump(mode='json') for s in snapshots]
+    
+    @app.get("/adaptive/profiles/{session_id}", response_model=Dict[str, any])
+    async def get_attacker_profile(session_id: str) -> Dict[str, any]:
+        """Get attacker profile for a session."""
+        if not hasattr(app.state, 'attacker_profiler'):
+            raise HTTPException(status_code=501, detail="Adaptive tools not enabled")
+        
+        profiler = app.state.attacker_profiler
+        profile = profiler.get_profile(session_id)
+        
+        if not profile:
+            raise HTTPException(status_code=404, detail=f"No profile for session: {session_id}")
+        
+        return profile.model_dump(mode='json')
+    
+    @app.post("/adaptive/profiles/{session_id}/analyze", response_model=Dict[str, any])
+    async def analyze_session_profile(session_id: str) -> Dict[str, any]:
+        """Analyze session and create attacker profile."""
+        if not hasattr(app.state, 'attacker_profiler'):
+            raise HTTPException(status_code=501, detail="Adaptive tools not enabled")
+        
+        # Get events for session
+        events = await list_events(
+            storage_path=app.state.event_storage_path,
+            session_id=session_id,
+        )
+        
+        if not events:
+            raise HTTPException(status_code=404, detail=f"No events for session: {session_id}")
+        
+        profiler = app.state.attacker_profiler
+        profile = await profiler.analyze_session(session_id, events)
+        
+        return profile.model_dump(mode='json')
+    
+    @app.get("/adaptive/profiles", response_model=Dict[str, any])
+    async def get_all_profiles() -> Dict[str, any]:
+        """Get all attacker profiles with statistics."""
+        if not hasattr(app.state, 'attacker_profiler'):
+            raise HTTPException(status_code=501, detail="Adaptive tools not enabled")
+        
+        profiler = app.state.attacker_profiler
+        profiles = profiler.get_all_profiles()
+        stats = await profiler.get_statistics()
+        
+        return {
+            "profiles": {sid: p.model_dump(mode='json') for sid, p in profiles.items()},
+            "statistics": stats,
+        }
+    
+    @app.get("/adaptive/campaigns", response_model=List[Dict[str, any]])
+    async def identify_campaigns() -> List[Dict[str, any]]:
+        """Identify potential attack campaigns."""
+        if not hasattr(app.state, 'attacker_profiler'):
+            raise HTTPException(status_code=501, detail="Adaptive tools not enabled")
+        
+        profiler = app.state.attacker_profiler
+        campaigns = await profiler.identify_campaigns()
+        
+        return campaigns
+    
+    @app.get("/adaptive/hints/{session_id}", response_model=Dict[str, any])
+    async def get_generation_hint(session_id: str) -> Dict[str, any]:
+        """Get tool generation hint for a session."""
+        if not hasattr(app.state, 'attacker_profiler'):
+            raise HTTPException(status_code=501, detail="Adaptive tools not enabled")
+        
+        profiler = app.state.attacker_profiler
+        hint = await profiler.generate_hint(session_id)
+        
+        if not hint:
+            raise HTTPException(status_code=404, detail=f"No hint available for session: {session_id}")
+        
+        return hint.model_dump(mode='json')
+    
+    @app.post("/adaptive/compare-profiles", response_model=Dict[str, any])
+    async def compare_attacker_profiles(
+        session1: str = Query(..., description="First session ID"),
+        session2: str = Query(..., description="Second session ID"),
+    ) -> Dict[str, any]:
+        """Compare two attacker profiles."""
+        if not hasattr(app.state, 'attacker_profiler'):
+            raise HTTPException(status_code=501, detail="Adaptive tools not enabled")
+        
+        profiler = app.state.attacker_profiler
+        comparison = await profiler.compare_profiles(session1, session2)
+        
+        return comparison
+
         format: ExportFormat = Query(default=ExportFormat.HTML, description="Export format"),
     ) -> Response:
         """Export forensic report in specified format."""
