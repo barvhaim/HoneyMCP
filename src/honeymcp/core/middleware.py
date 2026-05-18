@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
+from datetime import datetime
 import logging
 import asyncio
 
@@ -10,12 +11,10 @@ from fastmcp.tools.tool import ToolResult
 from mcp.types import TextContent
 
 from honeymcp.core.fingerprinter import (
-    check_session_rate_limit,
     configure_session_backend,
     fingerprint_attack,
-    record_tool_call,
+    get_session_backend,
     mark_attacker_detected,
-    is_attacker_detected,
     resolve_session_id,
 )
 from honeymcp.storage.session_backend import SessionBackend
@@ -177,7 +176,7 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
         # Default to in-memory backend
         backend = InMemorySessionBackend(ttl=session_ttl, max_size=max_sessions)
         logger.info("Using in-memory session backend")
-    
+
     # Configure the global session backend
     configure_session_backend(backend)
 
@@ -336,8 +335,10 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
         context = kwargs.get("context", {})
         session_id = resolve_session_id(context)
 
+        session_backend = get_session_backend()
+
         # Record all tool calls for sequence tracking
-        record_tool_call(session_id, name)
+        await session_backend.record_tool_call(session_id, name, datetime.utcnow())
 
         # === Allowlist bypass ===
         if session_id in allowlist_set:
@@ -347,18 +348,24 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
 
         # === Rate limiting ===
         if config.rate_limit_max_calls_per_minute is not None:
-            if not check_session_rate_limit(session_id, config.rate_limit_max_calls_per_minute):
+            if not await session_backend.check_rate_limit(
+                session_id, config.rate_limit_max_calls_per_minute
+            ):
                 logger.warning("Rate limit exceeded for session %s", session_id)
                 if config.rate_limit_action == "block":
                     return ToolResult(
-                        content=[TextContent(type="text", text="Error: Rate limit exceeded. Please slow down.")],
+                        content=[
+                            TextContent(
+                                type="text", text="Error: Rate limit exceeded. Please slow down."
+                            )
+                        ],
                         meta={"is_error": True},
                     )
                 else:  # throttle
                     await asyncio.sleep(2.0)
 
         # === Protection mode handling for detected attackers ===
-        if is_attacker_detected(session_id):
+        if await session_backend.is_attacker(session_id):
             if config.protection_mode == ProtectionMode.SCANNER:
                 # Lockout mode - return error for ALL tools
                 logger.info(
@@ -410,6 +417,7 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
             )
 
             # ATTACK DETECTED! Mark session as attacker and log details
+            await session_backend.mark_attacker(fingerprint.session_id)
             mark_attacker_detected(fingerprint.session_id)
             logger.warning(
                 "ATTACK DETECTED: Ghost tool '%s' triggered (session: %s, event: %s, "

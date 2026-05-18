@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 class ForensicsExporter:
     """Export attack data in multiple formats.
-    
+
     Supported formats:
     - JSON: Complete data export
     - CSV: Tabular event data
@@ -39,11 +39,11 @@ class ForensicsExporter:
         format: ExportFormat,
     ) -> str:
         """Export attack timeline in specified format.
-        
+
         Args:
             timeline: Attack timeline to export
             format: Export format
-            
+
         Returns:
             Exported data as string
         """
@@ -64,11 +64,11 @@ class ForensicsExporter:
         format: ExportFormat,
     ) -> str:
         """Export forensic report in specified format.
-        
+
         Args:
             report: Forensic report to export
             format: Export format
-            
+
         Returns:
             Exported data as string
         """
@@ -85,53 +85,57 @@ class ForensicsExporter:
 
     def _export_timeline_json(self, timeline: AttackTimeline) -> str:
         """Export timeline as JSON."""
-        data = timeline.model_dump(mode='json')
+        data = timeline.model_dump(mode="json")
         return json.dumps(data, indent=2, default=str)
 
     def _export_timeline_csv(self, timeline: AttackTimeline) -> str:
         """Export timeline as CSV."""
         output = StringIO()
         writer = csv.writer(output)
-        
+
         # Header
-        writer.writerow([
-            "Timestamp",
-            "Elapsed (s)",
-            "Event Type",
-            "Tool Name",
-            "Threat Level",
-            "Attack Category",
-            "Response",
-        ])
-        
+        writer.writerow(
+            [
+                "Timestamp",
+                "Elapsed (s)",
+                "Event Type",
+                "Tool Name",
+                "Threat Level",
+                "Attack Category",
+                "Response",
+            ]
+        )
+
         # Events
         for event in timeline.events:
-            writer.writerow([
-                event.timestamp.isoformat(),
-                f"{event.elapsed_seconds:.2f}",
-                event.event_type,
-                event.tool_name or "",
-                event.threat_level or "",
-                event.attack_category or "",
-                (event.response or "")[:100],  # Truncate long responses
-            ])
-        
+            writer.writerow(
+                [
+                    event.timestamp.isoformat(),
+                    f"{event.elapsed_seconds:.2f}",
+                    event.event_type,
+                    event.tool_name or "",
+                    event.threat_level or "",
+                    event.attack_category or "",
+                    (event.response or "")[:100],  # Truncate long responses
+                ]
+            )
+
         return output.getvalue()
 
     async def _export_timeline_stix(self, timeline: AttackTimeline) -> str:
         """Export timeline as STIX 2.1 bundle."""
         indicators = []
-        
+
         # Create indicator for each unique tool
         for tool in timeline.unique_tools_used:
             indicator_id = f"indicator--{uuid4()}"
-            
+
             # Create STIX pattern
             pattern = f"[x-honeymcp-tool:name = '{tool}']"
-            
+
             # Count occurrences
             tool_count = timeline.tool_sequence.count(tool)
-            
+
             indicator = STIXIndicator(
                 id=indicator_id,
                 created=timeline.start_time,
@@ -145,18 +149,19 @@ class ForensicsExporter:
                     "honeypot",
                     "attack-pattern",
                     timeline.max_threat_level,
-                ] + timeline.attack_categories,
+                ]
+                + timeline.attack_categories,
                 confidence=85,  # High confidence since it's from honeypot
             )
             indicators.append(indicator)
-        
+
         # Create bundle
         bundle = STIXBundle(
             id=f"bundle--{uuid4()}",
             objects=indicators,
         )
-        
-        data = bundle.model_dump(mode='json')
+
+        data = bundle.model_dump(mode="json")
         return json.dumps(data, indent=2, default=str)
 
     def _export_timeline_html(self, timeline: AttackTimeline) -> str:
@@ -290,7 +295,7 @@ class ForensicsExporter:
         <h2>⏱️ Event Timeline</h2>
         <div class="timeline">
 """
-        
+
         for event in timeline.events:
             threat_class = event.threat_level or "low"
             html += f"""
@@ -305,7 +310,7 @@ class ForensicsExporter:
                     <span class="threat-level threat-{threat_class}">{threat_class.upper()}</span>
                 </div>
 """
-            
+
             if event.response:
                 html += f"""
                 <div class="response">
@@ -313,21 +318,21 @@ class ForensicsExporter:
                     {event.response[:500]}{'...' if len(event.response) > 500 else ''}
                 </div>
 """
-            
+
             html += "            </div>\n"
-        
+
         html += """
         </div>
     </div>
 </body>
 </html>
 """
-        
+
         return html
 
     def _export_report_json(self, report: ForensicReport) -> str:
         """Export report as JSON."""
-        data = report.model_dump(mode='json')
+        data = report.model_dump(mode="json")
         return json.dumps(data, indent=2, default=str)
 
     def _export_report_html(self, report: ForensicReport) -> str:
@@ -454,10 +459,10 @@ class ForensicsExporter:
             <p><strong>Techniques Used:</strong></p>
             <ul>
 """
-        
+
         for technique in report.techniques_used:
             html += f"                <li>{technique}</li>\n"
-        
+
         html += """
             </ul>
         </div>
@@ -465,10 +470,10 @@ class ForensicsExporter:
         <div class="section">
             <h2>🚨 Indicators of Compromise (IOCs)</h2>
 """
-        
+
         for ioc in report.indicators_of_compromise:
             html += f'            <div class="ioc">{ioc}</div>\n'
-        
+
         html += """
         </div>
         
@@ -477,19 +482,19 @@ class ForensicsExporter:
             <p><strong>Tactics:</strong></p>
             <div>
 """
-        
+
         for tactic in report.mitre_tactics:
             html += f'                <span class="mitre">{tactic}</span>\n'
-        
+
         html += """
             </div>
             <p><strong>Techniques:</strong></p>
             <div>
 """
-        
+
         for technique in report.mitre_techniques:
             html += f'                <span class="mitre">{technique}</span>\n'
-        
+
         html += """
             </div>
         </div>
@@ -497,10 +502,10 @@ class ForensicsExporter:
         <div class="section">
             <h2>💡 Recommendations</h2>
 """
-        
+
         for rec in report.recommendations:
             html += f'            <div class="recommendation">{rec}</div>\n'
-        
+
         html += """
         </div>
         
@@ -508,15 +513,15 @@ class ForensicsExporter:
             <h2>🔧 Mitigation Steps</h2>
             <ol>
 """
-        
+
         for step in report.mitigation_steps:
             html += f"                <li>{step}</li>\n"
-        
+
         html += """
             </ol>
         </div>
 """
-        
+
         if report.analyst_notes:
             html += f"""
         <div class="section">
@@ -524,7 +529,7 @@ class ForensicsExporter:
             <p>{report.analyst_notes}</p>
         </div>
 """
-        
+
         if report.tags:
             html += """
         <div class="section">
@@ -533,12 +538,12 @@ class ForensicsExporter:
 """
             for tag in report.tags:
                 html += f'                <span class="tag">{tag}</span>\n'
-            
+
             html += """
             </div>
         </div>
 """
-        
+
         html += f"""
         <div class="footer">
             <p>Generated by HoneyMCP Forensics System</p>
@@ -548,7 +553,7 @@ class ForensicsExporter:
 </body>
 </html>
 """
-        
+
         return html
 
     def _format_duration(self, seconds: float) -> str:

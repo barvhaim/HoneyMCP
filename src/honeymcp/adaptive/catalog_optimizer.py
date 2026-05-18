@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 class CatalogOptimizer:
     """Optimize ghost tool catalog based on effectiveness metrics.
-    
+
     Features:
     - Automatic tool promotion/retirement based on performance
     - Multiple optimization strategies
@@ -35,7 +35,7 @@ class CatalogOptimizer:
         config: Optional[CatalogOptimizationConfig] = None,
     ) -> None:
         """Initialize catalog optimizer.
-        
+
         Args:
             tracker: Effectiveness tracker instance
             config: Optimization configuration
@@ -43,7 +43,7 @@ class CatalogOptimizer:
         self.tracker = tracker
         self.config = config or CatalogOptimizationConfig()
         self._snapshots: List[CatalogSnapshot] = []
-        
+
         logger.info(
             "Catalog optimizer initialized with strategy: %s",
             self.config.strategy.value,
@@ -54,20 +54,18 @@ class CatalogOptimizer:
         current_tools: List[GhostToolSpec],
     ) -> AdaptiveToolRecommendation:
         """Analyze current catalog and generate recommendations.
-        
+
         Args:
             current_tools: Current ghost tools in catalog
-            
+
         Returns:
             Recommendations for catalog changes
         """
         recommendation_id = f"rec_{uuid4().hex[:12]}"
-        
+
         # Get metrics for current tools
-        metrics = await self.tracker.get_recent_metrics(
-            hours=self.config.evaluation_window_hours
-        )
-        
+        metrics = await self.tracker.get_recent_metrics(hours=self.config.evaluation_window_hours)
+
         # Analyze based on strategy
         if self.config.strategy == OptimizationStrategy.BALANCED:
             recommendation = await self._balanced_optimization(
@@ -85,14 +83,14 @@ class CatalogOptimizer:
             recommendation = await self._adaptive_optimization(
                 current_tools, metrics, recommendation_id
             )
-        
+
         logger.info(
             "Generated recommendation %s: +%d tools, -%d tools",
             recommendation_id,
             len(recommendation.tools_to_add),
             len(recommendation.tools_to_remove),
         )
-        
+
         return recommendation
 
     async def _balanced_optimization(
@@ -102,13 +100,13 @@ class CatalogOptimizer:
         recommendation_id: str,
     ) -> AdaptiveToolRecommendation:
         """Balanced optimization strategy.
-        
+
         Balances all metrics equally for well-rounded catalog.
         """
         tools_to_remove = []
         tools_to_add = []
         rationale_parts = []
-        
+
         # Identify low-performing tools
         if self.config.auto_retire_enabled:
             for tool in current_tools:
@@ -118,29 +116,29 @@ class CatalogOptimizer:
                     rationale_parts.append(
                         f"Remove '{tool.name}' (score: {metric.overall_score:.2f})"
                     )
-        
+
         # Ensure minimum tools
         current_count = len(current_tools) - len(tools_to_remove)
         if current_count < self.config.min_tools:
             needed = self.config.min_tools - current_count
             tools_to_add.extend([f"new_tool_{i}" for i in range(needed)])
             rationale_parts.append(f"Add {needed} tools to meet minimum")
-        
+
         # Limit maximum tools
         if current_count > self.config.max_tools:
             excess = current_count - self.config.max_tools
             # Remove lowest scoring tools
             sorted_tools = sorted(
                 [(t.name, metrics.get(t.name)) for t in current_tools],
-                key=lambda x: x[1].overall_score if x[1] else 0.0
+                key=lambda x: x[1].overall_score if x[1] else 0.0,
             )
             for tool_name, _ in sorted_tools[:excess]:
                 if tool_name not in tools_to_remove:
                     tools_to_remove.append(tool_name)
             rationale_parts.append(f"Remove {excess} tools to meet maximum")
-        
+
         rationale = "; ".join(rationale_parts) if rationale_parts else "No changes needed"
-        
+
         return AdaptiveToolRecommendation(
             recommendation_id=recommendation_id,
             generated_at=datetime.utcnow(),
@@ -160,12 +158,12 @@ class CatalogOptimizer:
         recommendation_id: str,
     ) -> AdaptiveToolRecommendation:
         """Detection-focused optimization strategy.
-        
+
         Prioritizes tools with high threat detection rates.
         """
         tools_to_remove = []
         rationale_parts = []
-        
+
         # Remove tools with low detection scores
         if self.config.auto_retire_enabled:
             for tool in current_tools:
@@ -175,13 +173,13 @@ class CatalogOptimizer:
                     rationale_parts.append(
                         f"Remove '{tool.name}' (detection: {metric.detection_score:.2f})"
                     )
-        
+
         rationale = (
             "Detection-focused: " + "; ".join(rationale_parts)
             if rationale_parts
             else "All tools have adequate detection scores"
         )
-        
+
         return AdaptiveToolRecommendation(
             recommendation_id=recommendation_id,
             generated_at=datetime.utcnow(),
@@ -201,12 +199,12 @@ class CatalogOptimizer:
         recommendation_id: str,
     ) -> AdaptiveToolRecommendation:
         """Engagement-focused optimization strategy.
-        
+
         Prioritizes tools that keep attackers engaged longer.
         """
         tools_to_remove = []
         rationale_parts = []
-        
+
         # Remove tools with low engagement
         if self.config.auto_retire_enabled:
             for tool in current_tools:
@@ -216,13 +214,13 @@ class CatalogOptimizer:
                     rationale_parts.append(
                         f"Remove '{tool.name}' (engagement: {metric.engagement_score:.2f})"
                     )
-        
+
         rationale = (
             "Engagement-focused: " + "; ".join(rationale_parts)
             if rationale_parts
             else "All tools have adequate engagement"
         )
-        
+
         return AdaptiveToolRecommendation(
             recommendation_id=recommendation_id,
             generated_at=datetime.utcnow(),
@@ -242,12 +240,12 @@ class CatalogOptimizer:
         recommendation_id: str,
     ) -> AdaptiveToolRecommendation:
         """Adaptive optimization strategy.
-        
+
         Adapts based on current attack patterns and catalog performance.
         """
         # Get overall statistics
         stats = await self.tracker.get_statistics()
-        
+
         # Decide strategy based on current state
         if stats["avg_score"] < 0.5:
             # Low overall performance - focus on detection
@@ -256,9 +254,7 @@ class CatalogOptimizer:
             )
         elif stats["score_distribution"]["high"] < len(current_tools) * 0.3:
             # Not enough high-performing tools - use balanced
-            return await self._balanced_optimization(
-                current_tools, metrics, recommendation_id
-            )
+            return await self._balanced_optimization(current_tools, metrics, recommendation_id)
         else:
             # Good performance - focus on engagement
             return await self._engagement_focused_optimization(
@@ -270,31 +266,31 @@ class CatalogOptimizer:
         current_tools: List[GhostToolSpec],
     ) -> CatalogSnapshot:
         """Create snapshot of current catalog state.
-        
+
         Args:
             current_tools: Current tools in catalog
-            
+
         Returns:
             Catalog snapshot
         """
         snapshot_id = f"snap_{uuid4().hex[:12]}"
-        
+
         # Get all metrics
         all_metrics = self.tracker.get_all_metrics()
-        
+
         # Calculate overall effectiveness
         if all_metrics:
-            overall_effectiveness = sum(
-                m.overall_score for m in all_metrics.values()
-            ) / len(all_metrics)
+            overall_effectiveness = sum(m.overall_score for m in all_metrics.values()) / len(
+                all_metrics
+            )
             avg_tool_score = overall_effectiveness
         else:
             overall_effectiveness = 0.0
             avg_tool_score = 0.0
-        
+
         # Get statistics
         stats = await self.tracker.get_statistics()
-        
+
         snapshot = CatalogSnapshot(
             snapshot_id=snapshot_id,
             timestamp=datetime.utcnow(),
@@ -306,16 +302,16 @@ class CatalogOptimizer:
             total_sessions=stats.get("total_unique_sessions", 0),
             total_triggers=stats.get("total_triggers", 0),
         )
-        
+
         self._snapshots.append(snapshot)
-        
+
         logger.info(
             "Created catalog snapshot %s: %d tools, %.2f effectiveness",
             snapshot_id,
             len(current_tools),
             overall_effectiveness,
         )
-        
+
         return snapshot
 
     def get_snapshots(
@@ -323,10 +319,10 @@ class CatalogOptimizer:
         limit: Optional[int] = None,
     ) -> List[CatalogSnapshot]:
         """Get historical snapshots.
-        
+
         Args:
             limit: Maximum number of snapshots to return (most recent first)
-            
+
         Returns:
             List of snapshots
         """
@@ -335,7 +331,7 @@ class CatalogOptimizer:
             key=lambda s: s.timestamp,
             reverse=True,
         )
-        
+
         if limit:
             return sorted_snapshots[:limit]
         return sorted_snapshots
@@ -346,28 +342,28 @@ class CatalogOptimizer:
         snapshot2_id: str,
     ) -> Dict[str, any]:
         """Compare two catalog snapshots.
-        
+
         Args:
             snapshot1_id: First snapshot ID
             snapshot2_id: Second snapshot ID
-            
+
         Returns:
             Comparison results
         """
         snap1 = next((s for s in self._snapshots if s.snapshot_id == snapshot1_id), None)
         snap2 = next((s for s in self._snapshots if s.snapshot_id == snapshot2_id), None)
-        
+
         if not snap1 or not snap2:
             return {"error": "One or both snapshots not found"}
-        
+
         # Calculate changes
         tools_added = set(snap2.active_tools) - set(snap1.active_tools)
         tools_removed = set(snap1.active_tools) - set(snap2.active_tools)
         tools_kept = set(snap1.active_tools) & set(snap2.active_tools)
-        
+
         # Calculate effectiveness change
         effectiveness_change = snap2.overall_effectiveness - snap1.overall_effectiveness
-        
+
         return {
             "snapshot1": {
                 "id": snapshot1_id,
@@ -392,29 +388,31 @@ class CatalogOptimizer:
 
     async def get_optimization_history(self) -> List[Dict[str, any]]:
         """Get history of optimization changes.
-        
+
         Returns:
             List of optimization events
         """
         history = []
-        
+
         for i in range(1, len(self._snapshots)):
             prev = self._snapshots[i - 1]
             curr = self._snapshots[i]
-            
+
             tools_added = set(curr.active_tools) - set(prev.active_tools)
             tools_removed = set(prev.active_tools) - set(curr.active_tools)
-            
+
             if tools_added or tools_removed:
-                history.append({
-                    "timestamp": curr.timestamp,
-                    "tools_added": list(tools_added),
-                    "tools_removed": list(tools_removed),
-                    "effectiveness_before": prev.overall_effectiveness,
-                    "effectiveness_after": curr.overall_effectiveness,
-                    "improvement": curr.overall_effectiveness - prev.overall_effectiveness,
-                })
-        
+                history.append(
+                    {
+                        "timestamp": curr.timestamp,
+                        "tools_added": list(tools_added),
+                        "tools_removed": list(tools_removed),
+                        "effectiveness_before": prev.overall_effectiveness,
+                        "effectiveness_after": curr.overall_effectiveness,
+                        "improvement": curr.overall_effectiveness - prev.overall_effectiveness,
+                    }
+                )
+
         return history
 
     async def predict_impact(
@@ -423,29 +421,28 @@ class CatalogOptimizer:
         current_tools: List[GhostToolSpec],
     ) -> Dict[str, any]:
         """Predict impact of applying a recommendation.
-        
+
         Args:
             recommendation: Recommendation to evaluate
             current_tools: Current catalog tools
-            
+
         Returns:
             Impact prediction
         """
         # Get current metrics
         current_metrics = self.tracker.get_all_metrics()
-        
+
         # Calculate current average score
         if current_metrics:
-            current_avg = sum(m.overall_score for m in current_metrics.values()) / len(current_metrics)
+            current_avg = sum(m.overall_score for m in current_metrics.values()) / len(
+                current_metrics
+            )
         else:
             current_avg = 0.0
-        
+
         # Simulate removal of low-performing tools
-        remaining_tools = [
-            t for t in current_tools
-            if t.name not in recommendation.tools_to_remove
-        ]
-        
+        remaining_tools = [t for t in current_tools if t.name not in recommendation.tools_to_remove]
+
         # Calculate new average (excluding removed tools)
         if remaining_tools:
             remaining_scores = [
@@ -459,15 +456,16 @@ class CatalogOptimizer:
                 new_avg = current_avg
         else:
             new_avg = 0.0
-        
+
         # Estimate impact
         predicted_improvement = new_avg - current_avg
-        
+
         return {
             "current_avg_score": current_avg,
             "predicted_avg_score": new_avg,
             "predicted_improvement": predicted_improvement,
-            "tools_affected": len(recommendation.tools_to_remove) + len(recommendation.tools_to_add),
+            "tools_affected": len(recommendation.tools_to_remove)
+            + len(recommendation.tools_to_add),
             "confidence": 0.7,  # Simplified confidence score
             "recommendation": recommendation.rationale,
         }
@@ -478,35 +476,32 @@ class CatalogOptimizer:
         current_tools: List[GhostToolSpec],
     ) -> List[GhostToolSpec]:
         """Apply recommendation to catalog (simulation).
-        
+
         Args:
             recommendation: Recommendation to apply
             current_tools: Current catalog
-            
+
         Returns:
             Updated catalog
         """
         # Remove tools
-        updated_tools = [
-            t for t in current_tools
-            if t.name not in recommendation.tools_to_remove
-        ]
-        
+        updated_tools = [t for t in current_tools if t.name not in recommendation.tools_to_remove]
+
         # Note: Adding new tools would require tool generation
         # This is a placeholder - actual implementation would integrate
         # with tool generation system
-        
+
         logger.info(
             "Applied recommendation: removed %d tools, catalog now has %d tools",
             len(recommendation.tools_to_remove),
             len(updated_tools),
         )
-        
+
         return updated_tools
 
     def get_config(self) -> CatalogOptimizationConfig:
         """Get current optimization configuration.
-        
+
         Returns:
             Current configuration
         """
@@ -514,7 +509,7 @@ class CatalogOptimizer:
 
     def update_config(self, config: CatalogOptimizationConfig) -> None:
         """Update optimization configuration.
-        
+
         Args:
             config: New configuration
         """
