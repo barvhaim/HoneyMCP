@@ -1,11 +1,14 @@
 """Attack fingerprinting - capture complete attack context."""
 
 import logging
+import threading
+import time
 from datetime import datetime
 from uuid import uuid4
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from honeymcp.models.events import AttackFingerprint
 from honeymcp.models.ghost_tool_spec import GhostToolSpec
+from honeymcp.storage.memory_backend import InMemorySessionBackend
 from honeymcp.storage.session_backend import SessionBackend
 
 logger = logging.getLogger(__name__)
@@ -13,13 +16,14 @@ logger = logging.getLogger(__name__)
 
 # Module-level session backend instance
 _session_backend: Optional[SessionBackend] = None
+_legacy_session_store: Optional["SessionStore"] = None
 
 
 def configure_session_backend(backend: SessionBackend) -> None:
     """Configure the global session backend.
-    
+
     Should be called once at startup (e.g. from honeypot()).
-    
+
     Args:
         backend: SessionBackend implementation to use
     """
@@ -28,12 +32,34 @@ def configure_session_backend(backend: SessionBackend) -> None:
     logger.info("Session backend configured: %s", type(backend).__name__)
 
 
+def configure_session_store(
+    ttl: int = 3600,
+    max_size: int = 10_000,
+) -> None:
+    """Configure legacy in-memory session state.
+
+    Deprecated compatibility shim for callers that predate pluggable session
+    backends. New code should use configure_session_backend().
+    """
+    global _legacy_session_store  # pylint: disable=global-statement
+    _legacy_session_store = SessionStore(ttl=ttl, max_size=max_size)
+    configure_session_backend(InMemorySessionBackend(ttl=ttl, max_size=max_size))
+
+
+def get_session_store() -> "SessionStore":
+    """Get the legacy in-memory session store, creating it if needed."""
+    global _legacy_session_store  # pylint: disable=global-statement
+    if _legacy_session_store is None:
+        _legacy_session_store = SessionStore()
+    return _legacy_session_store
+
+
 def get_session_backend() -> SessionBackend:
     """Get the current session backend.
-    
+
     Returns:
         The configured SessionBackend instance
-        
+
     Raises:
         RuntimeError: If backend has not been configured
     """
@@ -163,7 +189,9 @@ class SessionStore:
     def session_count(self) -> int:
         """Number of unique sessions currently tracked (for monitoring)."""
         with self._lock:
-            keys = set(self._attacker_detected) | set(self._tool_history) | set(self._call_timestamps)
+            keys = (
+                set(self._attacker_detected) | set(self._tool_history) | set(self._call_timestamps)
+            )
             return len(keys)
 
     def clear(self) -> None:
@@ -181,62 +209,96 @@ class SessionStore:
 
 def mark_attacker_detected(session_id: str) -> None:
     """Mark a session as having triggered a ghost tool (attacker detected)."""
+    if _legacy_session_store is not None:
+        _legacy_session_store.mark_attacker(session_id)
+        return
+
     import asyncio
+
     backend = get_session_backend()
+    coro = backend.mark_attacker(session_id)
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
+        loop.create_task(coro)
+        return
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-    loop.run_until_complete(backend.mark_attacker(session_id))
+    loop.run_until_complete(coro)
 
 
 def is_attacker_detected(session_id: str) -> bool:
     """Check if this session has been flagged as an attacker."""
+    if _legacy_session_store is not None:
+        return _legacy_session_store.is_attacker(session_id)
+
     import asyncio
+
     backend = get_session_backend()
     try:
-        loop = asyncio.get_event_loop()
+        asyncio.get_running_loop()
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-    return loop.run_until_complete(backend.is_attacker(session_id))
+        coro = backend.is_attacker(session_id)
+        return loop.run_until_complete(coro)
+    raise RuntimeError("Use get_session_backend().is_attacker() from async code")
 
 
 def record_tool_call(session_id: str, tool_name: str) -> None:
     """Record a tool call in the session history."""
+    if _legacy_session_store is not None:
+        _legacy_session_store.record_tool(session_id, tool_name)
+        return
+
     import asyncio
+
     backend = get_session_backend()
+    coro = backend.record_tool_call(session_id, tool_name, datetime.utcnow())
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
+        loop.create_task(coro)
+        return
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-    loop.run_until_complete(backend.record_tool_call(session_id, tool_name, datetime.utcnow()))
+    loop.run_until_complete(coro)
 
 
 def get_session_tool_history(session_id: str) -> List[str]:
     """Get the tool call history for a session."""
+    if _legacy_session_store is not None:
+        return _legacy_session_store.get_tool_history(session_id)
+
     import asyncio
+
     backend = get_session_backend()
     try:
-        loop = asyncio.get_event_loop()
+        asyncio.get_running_loop()
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-    return loop.run_until_complete(backend.get_tool_history(session_id))
+        coro = backend.get_tool_history(session_id)
+        return loop.run_until_complete(coro)
+    raise RuntimeError("Use get_session_backend().get_tool_history() from async code")
 
 
 def check_session_rate_limit(session_id: str, max_per_minute: int) -> bool:
     """Check if session is within rate limit. Returns True if allowed, False if exceeded."""
+    if _legacy_session_store is not None:
+        return _legacy_session_store.check_rate_limit(session_id, max_per_minute)
+
     import asyncio
+
     backend = get_session_backend()
     try:
-        loop = asyncio.get_event_loop()
+        asyncio.get_running_loop()
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-    return loop.run_until_complete(backend.check_rate_limit(session_id, max_per_minute))
+        coro = backend.check_rate_limit(session_id, max_per_minute)
+        return loop.run_until_complete(coro)
+    raise RuntimeError("Use get_session_backend().check_rate_limit() from async code")
 
 
 async def fingerprint_attack(
@@ -260,7 +322,7 @@ async def fingerprint_attack(
     session_id = _extract_session_id(context)
 
     # Get tool call history
-    tool_history = get_session_tool_history(session_id)
+    tool_history = await get_session_backend().get_tool_history(session_id)
 
     # Try to extract conversation history (may not be available in MCP)
     conversation = _extract_conversation_history(context)

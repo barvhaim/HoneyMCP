@@ -4,18 +4,17 @@ import time
 import threading
 from datetime import datetime
 from typing import Dict, List, Tuple
-from collections import defaultdict
 
 from honeymcp.storage.session_backend import SessionBackend
 
 
 class InMemorySessionBackend(SessionBackend):
     """In-memory session store with TTL-based expiration.
-    
+
     This is the default backend that stores all session state in process memory.
     Suitable for single-instance deployments where session persistence across
     restarts is not required.
-    
+
     Features:
     - TTL-based automatic expiration
     - Size-bounded with LRU eviction
@@ -34,7 +33,7 @@ class InMemorySessionBackend(SessionBackend):
         max_size: int = DEFAULT_MAX_SIZE,
     ) -> None:
         """Initialize in-memory session backend.
-        
+
         Args:
             ttl: Session time-to-live in seconds
             max_size: Maximum number of sessions to track
@@ -56,27 +55,31 @@ class InMemorySessionBackend(SessionBackend):
     def _maybe_cleanup(self) -> None:
         """Run a full sweep every _CLEANUP_INTERVAL writes."""
         self._write_count += 1
-        if self._write_count % self._CLEANUP_INTERVAL == 0:
+        if self._is_over_max_size() or self._write_count % self._CLEANUP_INTERVAL == 0:
             self._evict_expired()
+
+    def _is_over_max_size(self) -> bool:
+        """Return True when any tracked store exceeds the configured size."""
+        return any(
+            len(store) > self._max_size
+            for store in (self._attacker_detected, self._tool_history, self._call_timestamps)
+        )
 
     def _evict_expired(self) -> None:
         """Remove all expired entries and enforce max_size."""
         now = time.monotonic()
-        
+
         # Remove expired entries
         self._attacker_detected = {
-            k: v for k, v in self._attacker_detected.items() 
-            if (now - v[1]) <= self._ttl
+            k: v for k, v in self._attacker_detected.items() if (now - v[1]) <= self._ttl
         }
         self._tool_history = {
-            k: v for k, v in self._tool_history.items() 
-            if (now - v[1]) <= self._ttl
+            k: v for k, v in self._tool_history.items() if (now - v[1]) <= self._ttl
         }
         self._call_timestamps = {
-            k: v for k, v in self._call_timestamps.items() 
-            if (now - v[1]) <= self._ttl
+            k: v for k, v in self._call_timestamps.items() if (now - v[1]) <= self._ttl
         }
-        
+
         # If still over max_size, evict oldest entries (LRU)
         for store in (self._attacker_detected, self._tool_history, self._call_timestamps):
             if len(store) > self._max_size:
@@ -103,9 +106,7 @@ class InMemorySessionBackend(SessionBackend):
                 return False
             return entry[0]
 
-    async def record_tool_call(
-        self, session_id: str, tool_name: str, timestamp: datetime
-    ) -> None:
+    async def record_tool_call(self, session_id: str, tool_name: str, timestamp: datetime) -> None:
         """Record a tool call in the session history."""
         with self._lock:
             entry = self._tool_history.get(session_id)
@@ -129,7 +130,7 @@ class InMemorySessionBackend(SessionBackend):
 
     async def check_rate_limit(self, session_id: str, max_per_minute: int) -> bool:
         """Check if session is within rate limit.
-        
+
         Returns True if allowed, False if exceeded.
         """
         now = time.monotonic()
@@ -138,63 +139,66 @@ class InMemorySessionBackend(SessionBackend):
             if entry is None or self._is_expired(entry[1]):
                 self._call_timestamps[session_id] = ([now], now)
                 return True
-            
+
             timestamps, _ = entry
             # Prune timestamps older than 60 seconds
             cutoff = now - 60.0
             timestamps = [t for t in timestamps if t > cutoff]
             timestamps.append(now)
             self._call_timestamps[session_id] = (timestamps, now)
-            
+
             return len(timestamps) <= max_per_minute
 
     async def cleanup_expired(self, ttl_seconds: int) -> int:
         """Remove expired sessions based on TTL.
-        
+
         Args:
             ttl_seconds: Time-to-live in seconds (overrides instance TTL)
-            
+
         Returns:
             Number of sessions removed
         """
         with self._lock:
             now = time.monotonic()
-            
+
             # Count sessions before cleanup
-            before_count = len(set(
-                list(self._attacker_detected.keys()) +
-                list(self._tool_history.keys()) +
-                list(self._call_timestamps.keys())
-            ))
-            
+            before_count = len(
+                set(
+                    list(self._attacker_detected.keys())
+                    + list(self._tool_history.keys())
+                    + list(self._call_timestamps.keys())
+                )
+            )
+
             # Remove expired entries using provided TTL
             self._attacker_detected = {
-                k: v for k, v in self._attacker_detected.items() 
-                if (now - v[1]) <= ttl_seconds
+                k: v for k, v in self._attacker_detected.items() if (now - v[1]) <= ttl_seconds
             }
             self._tool_history = {
-                k: v for k, v in self._tool_history.items() 
-                if (now - v[1]) <= ttl_seconds
+                k: v for k, v in self._tool_history.items() if (now - v[1]) <= ttl_seconds
             }
             self._call_timestamps = {
-                k: v for k, v in self._call_timestamps.items() 
-                if (now - v[1]) <= ttl_seconds
+                k: v for k, v in self._call_timestamps.items() if (now - v[1]) <= ttl_seconds
             }
-            
+
             # Count sessions after cleanup
-            after_count = len(set(
-                list(self._attacker_detected.keys()) +
-                list(self._tool_history.keys()) +
-                list(self._call_timestamps.keys())
-            ))
-            
+            after_count = len(
+                set(
+                    list(self._attacker_detected.keys())
+                    + list(self._tool_history.keys())
+                    + list(self._call_timestamps.keys())
+                )
+            )
+
             return before_count - after_count
 
     async def get_session_count(self) -> int:
         """Get the total number of tracked sessions."""
         with self._lock:
             # Count unique session IDs across all stores
-            keys = set(self._attacker_detected) | set(self._tool_history) | set(self._call_timestamps)
+            keys = (
+                set(self._attacker_detected) | set(self._tool_history) | set(self._call_timestamps)
+            )
             return len(keys)
 
     async def clear(self) -> None:
