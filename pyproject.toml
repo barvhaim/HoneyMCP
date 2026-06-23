@@ -112,6 +112,9 @@ disable = [
 [tool.pylint.reports]
 fail-under = 7.0
 
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

@@ -2,21 +2,18 @@
 
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
+from datetime import datetime
 import logging
 import asyncio
-import inspect
 
 from fastmcp import FastMCP
 from fastmcp.tools.tool import ToolResult
 from mcp.types import TextContent
 
 from honeymcp.core.fingerprinter import (
-    async_check_session_rate_limit,
-    async_is_attacker_detected,
-    async_mark_attacker_detected,
-    async_record_tool_call,
     configure_session_backend,
     fingerprint_attack,
+    get_session_backend,
     mark_attacker_detected,
     resolve_session_id,
 )
@@ -32,17 +29,6 @@ from honeymcp.models.protection_mode import ProtectionMode
 from honeymcp.storage.event_store import cleanup_old_events, store_event
 
 logger = logging.getLogger(__name__)
-_default_mark_attacker_detected = mark_attacker_detected
-
-
-async def _mark_attacker_detected(session_id: str) -> None:
-    """Mark attackers while preserving the older middleware patch seam."""
-    if mark_attacker_detected is not _default_mark_attacker_detected:
-        result = mark_attacker_detected(session_id)
-        if inspect.isawaitable(result):
-            await result
-        return
-    await async_mark_attacker_detected(session_id)
 
 
 def honeypot_from_config(
@@ -189,7 +175,7 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
         # Default to in-memory backend
         backend = InMemorySessionBackend(ttl=session_ttl, max_size=max_sessions)
         logger.info("Using in-memory session backend")
-    
+
     # Configure the global session backend
     configure_session_backend(backend)
 
@@ -348,8 +334,10 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
         context = kwargs.get("context", {})
         session_id = resolve_session_id(context)
 
+        session_backend = get_session_backend()
+
         # Record all tool calls for sequence tracking
-        await async_record_tool_call(session_id, name)
+        await session_backend.record_tool_call(session_id, name, datetime.utcnow())
 
         # === Allowlist bypass ===
         if session_id in allowlist_set:
@@ -359,20 +347,24 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
 
         # === Rate limiting ===
         if config.rate_limit_max_calls_per_minute is not None:
-            if not await async_check_session_rate_limit(
+            if not await session_backend.check_rate_limit(
                 session_id, config.rate_limit_max_calls_per_minute
             ):
                 logger.warning("Rate limit exceeded for session %s", session_id)
                 if config.rate_limit_action == "block":
                     return ToolResult(
-                        content=[TextContent(type="text", text="Error: Rate limit exceeded. Please slow down.")],
+                        content=[
+                            TextContent(
+                                type="text", text="Error: Rate limit exceeded. Please slow down."
+                            )
+                        ],
                         meta={"is_error": True},
                     )
                 else:  # throttle
                     await asyncio.sleep(2.0)
 
         # === Protection mode handling for detected attackers ===
-        if await async_is_attacker_detected(session_id):
+        if await session_backend.is_attacker(session_id):
             if config.protection_mode == ProtectionMode.SCANNER:
                 # Lockout mode - return error for ALL tools
                 logger.info(
@@ -424,7 +416,10 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
             )
 
             # ATTACK DETECTED! Mark session as attacker and log details
-            await _mark_attacker_detected(fingerprint.session_id)
+            if isinstance(session_backend, InMemorySessionBackend):
+                mark_attacker_detected(fingerprint.session_id)
+            else:
+                await session_backend.mark_attacker(fingerprint.session_id)
             logger.warning(
                 "ATTACK DETECTED: Ghost tool '%s' triggered (session: %s, event: %s, "
                 "threat: %s, category: %s, args: %s, client: %s, tool_seq: %s)",

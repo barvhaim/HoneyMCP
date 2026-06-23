@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 class EffectivenessTracker:
     """Track and calculate effectiveness metrics for ghost tools.
-    
+
     Features:
     - Real-time metric updates as attacks occur
     - Sliding window analysis for recent performance
@@ -26,7 +26,7 @@ class EffectivenessTracker:
         self._metrics: Dict[str, ToolEffectivenessMetric] = {}
         self._session_tools: Dict[str, set] = defaultdict(set)  # session_id -> tools used
         self._session_start_times: Dict[str, datetime] = {}  # session_id -> start time
-        
+
         logger.info("Effectiveness tracker initialized")
 
     async def record_trigger(
@@ -34,13 +34,13 @@ class EffectivenessTracker:
         event: AttackFingerprint,
     ) -> None:
         """Record a tool trigger event.
-        
+
         Args:
             event: Attack event to record
         """
         tool_name = event.ghost_tool_called
         session_id = event.session_id
-        
+
         # Initialize metric if needed
         if tool_name not in self._metrics:
             self._metrics[tool_name] = ToolEffectivenessMetric(
@@ -48,25 +48,24 @@ class EffectivenessTracker:
                 first_seen=event.timestamp,
                 last_updated=event.timestamp,
             )
-        
+
         metric = self._metrics[tool_name]
-        
+
         # Update trigger count
         metric.trigger_count += 1
         metric.last_triggered = event.timestamp
-        
+
         # Track unique sessions
         if tool_name not in self._session_tools[session_id]:
             self._session_tools[session_id].add(tool_name)
-            metric.unique_sessions = len([
-                sid for sid, tools in self._session_tools.items()
-                if tool_name in tools
-            ])
-        
+            metric.unique_sessions = len(
+                [sid for sid, tools in self._session_tools.items() if tool_name in tools]
+            )
+
         # Track session start time
         if session_id not in self._session_start_times:
             self._session_start_times[session_id] = event.timestamp
-        
+
         # Update time to trigger
         time_to_trigger = (event.timestamp - self._session_start_times[session_id]).total_seconds()
         if metric.trigger_count == 1:
@@ -74,20 +73,19 @@ class EffectivenessTracker:
         else:
             # Running average
             metric.avg_time_to_trigger = (
-                (metric.avg_time_to_trigger * (metric.trigger_count - 1) + time_to_trigger)
-                / metric.trigger_count
-            )
-        
+                metric.avg_time_to_trigger * (metric.trigger_count - 1) + time_to_trigger
+            ) / metric.trigger_count
+
         # Track high threat triggers
         if event.threat_level in ["high", "critical"]:
             metric.high_threat_triggers += 1
-        
+
         # Update timestamp
         metric.last_updated = datetime.utcnow()
-        
+
         # Recalculate scores
         await self._calculate_scores(metric)
-        
+
         logger.debug(
             "Recorded trigger for %s: count=%d, score=%.2f",
             tool_name,
@@ -97,7 +95,7 @@ class EffectivenessTracker:
 
     async def _calculate_scores(self, metric: ToolEffectivenessMetric) -> None:
         """Calculate effectiveness scores for a tool.
-        
+
         Args:
             metric: Metric to calculate scores for
         """
@@ -107,21 +105,21 @@ class EffectivenessTracker:
             # Normalize by time since first seen (days)
             days_active = max(1, (datetime.utcnow() - metric.first_seen).days)
             triggers_per_day = metric.trigger_count / days_active
-            
+
             # Score based on triggers per day (cap at 10 for normalization)
             metric.attractiveness_score = min(1.0, triggers_per_day / 10.0)
-            
+
             # Boost for unique sessions
             if metric.unique_sessions > 1:
                 session_boost = min(0.2, metric.unique_sessions * 0.05)
                 metric.attractiveness_score = min(1.0, metric.attractiveness_score + session_boost)
-        
+
         # Detection: How well it identifies threats
         # Higher ratio of high-threat triggers = better detection
         if metric.trigger_count > 0:
             threat_ratio = metric.high_threat_triggers / metric.trigger_count
             metric.detection_score = threat_ratio
-        
+
         # Engagement: How much time attackers spend with it
         # Lower time to trigger = more engaging (attackers find it quickly)
         if metric.avg_time_to_trigger > 0:
@@ -133,21 +131,21 @@ class EffectivenessTracker:
             else:
                 # Linear interpolation
                 metric.engagement_score = 1.0 - ((metric.avg_time_to_trigger - 60) / 240) * 0.8
-        
+
         # Overall score: weighted average
         # Attractiveness: 40%, Detection: 40%, Engagement: 20%
         metric.overall_score = (
-            metric.attractiveness_score * 0.4 +
-            metric.detection_score * 0.4 +
-            metric.engagement_score * 0.2
+            metric.attractiveness_score * 0.4
+            + metric.detection_score * 0.4
+            + metric.engagement_score * 0.2
         )
 
     def get_metric(self, tool_name: str) -> Optional[ToolEffectivenessMetric]:
         """Get effectiveness metric for a tool.
-        
+
         Args:
             tool_name: Name of the tool
-            
+
         Returns:
             Metric if available, None otherwise
         """
@@ -155,7 +153,7 @@ class EffectivenessTracker:
 
     def get_all_metrics(self) -> Dict[str, ToolEffectivenessMetric]:
         """Get all effectiveness metrics.
-        
+
         Returns:
             Dictionary of tool name to metric
         """
@@ -163,10 +161,10 @@ class EffectivenessTracker:
 
     def get_top_tools(self, n: int = 10) -> List[ToolEffectivenessMetric]:
         """Get top N most effective tools.
-        
+
         Args:
             n: Number of tools to return
-            
+
         Returns:
             List of top tools sorted by overall score
         """
@@ -179,10 +177,10 @@ class EffectivenessTracker:
 
     def get_bottom_tools(self, n: int = 10) -> List[ToolEffectivenessMetric]:
         """Get bottom N least effective tools.
-        
+
         Args:
             n: Number of tools to return
-            
+
         Returns:
             List of bottom tools sorted by overall score
         """
@@ -198,16 +196,17 @@ class EffectivenessTracker:
         max_score: float = 1.0,
     ) -> List[ToolEffectivenessMetric]:
         """Get tools within a score range.
-        
+
         Args:
             min_score: Minimum overall score
             max_score: Maximum overall score
-            
+
         Returns:
             List of tools in score range
         """
         return [
-            metric for metric in self._metrics.values()
+            metric
+            for metric in self._metrics.values()
             if min_score <= metric.overall_score <= max_score
         ]
 
@@ -216,15 +215,15 @@ class EffectivenessTracker:
         hours: int = 24,
     ) -> Dict[str, ToolEffectivenessMetric]:
         """Get metrics for tools active in recent time window.
-        
+
         Args:
             hours: Hours to look back
-            
+
         Returns:
             Dictionary of recently active tools
         """
         cutoff = datetime.utcnow() - timedelta(hours=hours)
-        
+
         return {
             name: metric
             for name, metric in self._metrics.items()
@@ -237,26 +236,27 @@ class EffectivenessTracker:
         window_hours: int = 24,
     ) -> Dict[str, float]:
         """Analyze trends for a specific tool.
-        
+
         Args:
             tool_name: Tool to analyze
             window_hours: Time window for analysis
-            
+
         Returns:
             Dictionary with trend metrics
         """
         metric = self._metrics.get(tool_name)
         if not metric:
             return {}
-        
+
         # Calculate trends (simplified - in production would track historical data)
         trends = {
             "current_score": metric.overall_score,
-            "trigger_rate": metric.trigger_count / max(1, (datetime.utcnow() - metric.first_seen).days),
+            "trigger_rate": metric.trigger_count
+            / max(1, (datetime.utcnow() - metric.first_seen).days),
             "unique_session_rate": metric.unique_sessions / max(1, metric.trigger_count),
             "threat_detection_rate": metric.high_threat_triggers / max(1, metric.trigger_count),
         }
-        
+
         return trends
 
     async def compare_tools(
@@ -265,20 +265,20 @@ class EffectivenessTracker:
         tool2: str,
     ) -> Dict[str, any]:
         """Compare effectiveness of two tools.
-        
+
         Args:
             tool1: First tool name
             tool2: Second tool name
-            
+
         Returns:
             Comparison results
         """
         metric1 = self._metrics.get(tool1)
         metric2 = self._metrics.get(tool2)
-        
+
         if not metric1 or not metric2:
             return {"error": "One or both tools not found"}
-        
+
         return {
             "tool1": tool1,
             "tool2": tool2,
@@ -304,7 +304,7 @@ class EffectivenessTracker:
 
     async def get_statistics(self) -> Dict[str, any]:
         """Get overall statistics across all tools.
-        
+
         Returns:
             Statistics dictionary
         """
@@ -314,14 +314,14 @@ class EffectivenessTracker:
                 "total_triggers": 0,
                 "avg_score": 0.0,
             }
-        
+
         total_triggers = sum(m.trigger_count for m in self._metrics.values())
         avg_score = sum(m.overall_score for m in self._metrics.values()) / len(self._metrics)
-        
+
         # Find best and worst
         best_tool = max(self._metrics.values(), key=lambda m: m.overall_score)
         worst_tool = min(self._metrics.values(), key=lambda m: m.overall_score)
-        
+
         return {
             "total_tools": len(self._metrics),
             "total_triggers": total_triggers,
@@ -344,7 +344,7 @@ class EffectivenessTracker:
 
     async def reset_metrics(self, tool_name: Optional[str] = None) -> None:
         """Reset metrics for a tool or all tools.
-        
+
         Args:
             tool_name: Tool to reset, or None for all tools
         """
@@ -360,23 +360,20 @@ class EffectivenessTracker:
 
     async def export_metrics(self) -> List[Dict[str, any]]:
         """Export all metrics for analysis.
-        
+
         Returns:
             List of metric dictionaries
         """
-        return [
-            metric.model_dump(mode='json')
-            for metric in self._metrics.values()
-        ]
+        return [metric.model_dump(mode="json") for metric in self._metrics.values()]
 
     async def import_metrics(self, metrics_data: List[Dict[str, any]]) -> None:
         """Import metrics from external source.
-        
+
         Args:
             metrics_data: List of metric dictionaries
         """
         for data in metrics_data:
             metric = ToolEffectivenessMetric(**data)
             self._metrics[metric.tool_name] = metric
-        
+
         logger.info("Imported %d metrics", len(metrics_data))
