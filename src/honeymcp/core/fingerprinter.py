@@ -216,6 +216,12 @@ def mark_attacker_detected(session_id: str) -> None:
     import asyncio
 
     backend = get_session_backend()
+    if isinstance(backend, SessionStore):
+        backend.mark_attacker(session_id)
+        return
+    if isinstance(backend, InMemorySessionBackend):
+        backend.mark_attacker_sync(session_id)
+        return
     coro = backend.mark_attacker(session_id)
     try:
         loop = asyncio.get_running_loop()
@@ -235,6 +241,10 @@ def is_attacker_detected(session_id: str) -> bool:
     import asyncio
 
     backend = get_session_backend()
+    if isinstance(backend, SessionStore):
+        return backend.is_attacker(session_id)
+    if isinstance(backend, InMemorySessionBackend):
+        return backend.is_attacker_sync(session_id)
     try:
         asyncio.get_running_loop()
     except RuntimeError:
@@ -254,6 +264,12 @@ def record_tool_call(session_id: str, tool_name: str) -> None:
     import asyncio
 
     backend = get_session_backend()
+    if isinstance(backend, SessionStore):
+        backend.record_tool(session_id, tool_name)
+        return
+    if isinstance(backend, InMemorySessionBackend):
+        backend.record_tool_call_sync(session_id, tool_name, datetime.utcnow())
+        return
     coro = backend.record_tool_call(session_id, tool_name, datetime.utcnow())
     try:
         loop = asyncio.get_running_loop()
@@ -273,6 +289,10 @@ def get_session_tool_history(session_id: str) -> List[str]:
     import asyncio
 
     backend = get_session_backend()
+    if isinstance(backend, SessionStore):
+        return backend.get_tool_history(session_id)
+    if isinstance(backend, InMemorySessionBackend):
+        return backend.get_tool_history_sync(session_id)
     try:
         asyncio.get_running_loop()
     except RuntimeError:
@@ -291,6 +311,10 @@ def check_session_rate_limit(session_id: str, max_per_minute: int) -> bool:
     import asyncio
 
     backend = get_session_backend()
+    if isinstance(backend, SessionStore):
+        return backend.check_rate_limit(session_id, max_per_minute)
+    if isinstance(backend, InMemorySessionBackend):
+        return backend.check_rate_limit_sync(session_id, max_per_minute)
     try:
         asyncio.get_running_loop()
     except RuntimeError:
@@ -322,7 +346,10 @@ async def fingerprint_attack(
     session_id = _extract_session_id(context)
 
     # Get tool call history
-    tool_history = await get_session_backend().get_tool_history(session_id)
+    try:
+        tool_history = await get_session_backend().get_tool_history(session_id)
+    except RuntimeError:
+        tool_history = []
 
     # Try to extract conversation history (may not be available in MCP)
     conversation = _extract_conversation_history(context)

@@ -417,8 +417,10 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
             )
 
             # ATTACK DETECTED! Mark session as attacker and log details
-            await session_backend.mark_attacker(fingerprint.session_id)
-            mark_attacker_detected(fingerprint.session_id)
+            if isinstance(session_backend, InMemorySessionBackend):
+                mark_attacker_detected(fingerprint.session_id)
+            else:
+                await session_backend.mark_attacker(fingerprint.session_id)
             logger.warning(
                 "ATTACK DETECTED: Ghost tool '%s' triggered (session: %s, event: %s, "
                 "threat: %s, category: %s, args: %s, client: %s, tool_seq: %s)",

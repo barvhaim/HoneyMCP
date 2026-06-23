@@ -64,15 +64,24 @@ class PatternDetector:
         if not events:
             return patterns
 
-        # Group events by time buckets (hourly)
-        time_buckets: Dict[datetime, List[AttackFingerprint]] = defaultdict(list)
-        for event in events:
-            # Round down to nearest hour
-            bucket = event.timestamp.replace(minute=0, second=0, microsecond=0)
-            time_buckets[bucket].append(event)
+        sorted_all_events = sorted(events, key=lambda e: e.timestamp)
+        seen_event_sets: Set[frozenset[str]] = set()
 
-        # Analyze each time bucket
-        for bucket_time, bucket_events in time_buckets.items():
+        # Analyze sliding time windows so detection is not sensitive to wall-clock hour boundaries.
+        for window_start in sorted_all_events:
+            bucket_time = window_start.timestamp
+            bucket_events = [
+                event
+                for event in sorted_all_events
+                if bucket_time <= event.timestamp <= bucket_time + self.time_window
+            ]
+            event_key = frozenset(event.event_id for event in bucket_events)
+            if any(event_key.issubset(seen_key) for seen_key in seen_event_sets):
+                continue
+            seen_event_sets = {
+                seen_key for seen_key in seen_event_sets if not seen_key.issubset(event_key)
+            }
+            seen_event_sets.add(event_key)
             unique_sessions = set(e.session_id for e in bucket_events)
 
             # Check if we have enough sessions for coordination
@@ -90,8 +99,8 @@ class PatternDetector:
             # Find tools used by multiple sessions (indicates coordination)
             common_tools = [
                 tool
-                for tool, count in tool_usage.items()
-                if count >= 2  # At least 2 sessions used this tool
+                for tool in tool_usage
+                if sum(1 for tools in session_tools.values() if tool in tools) >= 2
             ]
 
             if not common_tools:
@@ -194,12 +203,18 @@ class PatternDetector:
             # Sort by timestamp
             sorted_events = sorted(session_events_list, key=lambda e: e.timestamp)
 
+            # Calculate duration
+            duration = sorted_events[-1].timestamp - sorted_events[0].timestamp
+            if len(sorted_events) > 1:
+                avg_interval = duration / (len(sorted_events) - 1)
+                duration = duration + avg_interval
+
             # Calculate observed duration. If the latest event is not current, include
             # time since first sighting so sustained but currently quiet campaigns are
             # still represented as long-running.
             event_span = sorted_events[-1].timestamp - sorted_events[0].timestamp
             age_span = datetime.utcnow() - sorted_events[0].timestamp
-            duration = max(event_span, age_span)
+            duration = max(duration, event_span, age_span)
 
             if duration < self.campaign_min_duration:
                 continue

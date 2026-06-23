@@ -72,6 +72,7 @@ class EventStream:
             sent_initial_event = False
 
             # Send historical events if requested
+            history_sent = False
             if send_history:
                 for event in self._history:
                     if self._matches_filters(event, client_id):

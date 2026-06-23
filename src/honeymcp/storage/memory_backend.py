@@ -89,14 +89,18 @@ class InMemorySessionBackend(SessionBackend):
 
     # -- SessionBackend interface implementation ---------------------------
 
-    async def mark_attacker(self, session_id: str) -> None:
-        """Mark a session as having triggered a ghost tool."""
+    def mark_attacker_sync(self, session_id: str) -> None:
+        """Synchronously mark a session as having triggered a ghost tool."""
         with self._lock:
             self._attacker_detected[session_id] = (True, time.monotonic())
             self._maybe_cleanup()
 
-    async def is_attacker(self, session_id: str) -> bool:
-        """Check if a session has been flagged as an attacker."""
+    async def mark_attacker(self, session_id: str) -> None:
+        """Mark a session as having triggered a ghost tool."""
+        self.mark_attacker_sync(session_id)
+
+    def is_attacker_sync(self, session_id: str) -> bool:
+        """Synchronously check if a session has been flagged as an attacker."""
         with self._lock:
             entry = self._attacker_detected.get(session_id)
             if entry is None:
@@ -106,8 +110,12 @@ class InMemorySessionBackend(SessionBackend):
                 return False
             return entry[0]
 
-    async def record_tool_call(self, session_id: str, tool_name: str, timestamp: datetime) -> None:
-        """Record a tool call in the session history."""
+    async def is_attacker(self, session_id: str) -> bool:
+        """Check if a session has been flagged as an attacker."""
+        return self.is_attacker_sync(session_id)
+
+    def record_tool_call_sync(self, session_id: str, tool_name: str, timestamp: datetime) -> None:
+        """Synchronously record a tool call in the session history."""
         with self._lock:
             entry = self._tool_history.get(session_id)
             if entry is None or self._is_expired(entry[1]):
@@ -117,8 +125,12 @@ class InMemorySessionBackend(SessionBackend):
                 self._tool_history[session_id] = (entry[0], time.monotonic())
             self._maybe_cleanup()
 
-    async def get_tool_history(self, session_id: str) -> List[str]:
-        """Get the tool call history for a session."""
+    async def record_tool_call(self, session_id: str, tool_name: str, timestamp: datetime) -> None:
+        """Record a tool call in the session history."""
+        self.record_tool_call_sync(session_id, tool_name, timestamp)
+
+    def get_tool_history_sync(self, session_id: str) -> List[str]:
+        """Synchronously get the tool call history for a session."""
         with self._lock:
             entry = self._tool_history.get(session_id)
             if entry is None:
@@ -128,11 +140,12 @@ class InMemorySessionBackend(SessionBackend):
                 return []
             return list(entry[0])
 
-    async def check_rate_limit(self, session_id: str, max_per_minute: int) -> bool:
-        """Check if session is within rate limit.
+    async def get_tool_history(self, session_id: str) -> List[str]:
+        """Get the tool call history for a session."""
+        return self.get_tool_history_sync(session_id)
 
-        Returns True if allowed, False if exceeded.
-        """
+    def check_rate_limit_sync(self, session_id: str, max_per_minute: int) -> bool:
+        """Synchronously check if session is within rate limit."""
         now = time.monotonic()
         with self._lock:
             entry = self._call_timestamps.get(session_id)
@@ -141,13 +154,19 @@ class InMemorySessionBackend(SessionBackend):
                 return True
 
             timestamps, _ = entry
-            # Prune timestamps older than 60 seconds
             cutoff = now - 60.0
             timestamps = [t for t in timestamps if t > cutoff]
             timestamps.append(now)
             self._call_timestamps[session_id] = (timestamps, now)
 
             return len(timestamps) <= max_per_minute
+
+    async def check_rate_limit(self, session_id: str, max_per_minute: int) -> bool:
+        """Check if session is within rate limit.
+
+        Returns True if allowed, False if exceeded.
+        """
+        return self.check_rate_limit_sync(session_id, max_per_minute)
 
     async def cleanup_expired(self, ttl_seconds: int) -> int:
         """Remove expired sessions based on TTL.
@@ -195,6 +214,7 @@ class InMemorySessionBackend(SessionBackend):
     async def get_session_count(self) -> int:
         """Get the total number of tracked sessions."""
         with self._lock:
+            self._evict_expired()
             # Count unique session IDs across all stores
             keys = (
                 set(self._attacker_detected) | set(self._tool_history) | set(self._call_timestamps)
