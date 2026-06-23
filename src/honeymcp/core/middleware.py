@@ -17,7 +17,6 @@ from honeymcp.core.fingerprinter import (
     mark_attacker_detected,
     resolve_session_id,
 )
-from honeymcp.storage.session_backend import SessionBackend
 from honeymcp.storage.memory_backend import InMemorySessionBackend
 from honeymcp.storage.redis_backend import RedisSessionBackend
 from honeymcp.storage.sqlite_backend import SQLiteSessionBackend
