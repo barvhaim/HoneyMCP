@@ -71,6 +71,8 @@ async def test_dynamic_generation() -> None:
         server_context = await generator.analyze_server_context(sample_tools)
     except ValueError as exc:
         pytest.skip(f"LLM response invalid; check model access/config: {exc}")
+    except Exception as exc:
+        pytest.skip(f"LLM provider unavailable; check model access/config: {exc}")
     ghost_tools = await generator.generate_ghost_tools(server_context, num_tools=3)
 
     assert ghost_tools

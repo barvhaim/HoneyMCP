@@ -1,11 +1,14 @@
 """Attack fingerprinting - capture complete attack context."""
 
 import logging
+import threading
+import time
 from datetime import datetime
 from uuid import uuid4
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from honeymcp.models.events import AttackFingerprint
 from honeymcp.models.ghost_tool_spec import GhostToolSpec
+from honeymcp.storage.memory_backend import InMemorySessionBackend
 from honeymcp.storage.session_backend import SessionBackend
 
 logger = logging.getLogger(__name__)
@@ -17,9 +20,9 @@ _session_backend: Optional[SessionBackend] = None
 
 def configure_session_backend(backend: SessionBackend) -> None:
     """Configure the global session backend.
-    
+
     Should be called once at startup (e.g. from honeypot()).
-    
+
     Args:
         backend: SessionBackend implementation to use
     """
@@ -28,12 +31,24 @@ def configure_session_backend(backend: SessionBackend) -> None:
     logger.info("Session backend configured: %s", type(backend).__name__)
 
 
+def configure_session_store(
+    ttl: int = 3600,
+    max_size: int = 10_000,
+) -> None:
+    """Configure the default in-memory session backend.
+
+    Backward-compatible helper for callers that configured the old SessionStore
+    directly.
+    """
+    configure_session_backend(SessionStore(ttl=ttl, max_size=max_size))
+
+
 def get_session_backend() -> SessionBackend:
     """Get the current session backend.
-    
+
     Returns:
         The configured SessionBackend instance
-        
+
     Raises:
         RuntimeError: If backend has not been configured
     """
@@ -42,6 +57,14 @@ def get_session_backend() -> SessionBackend:
             "Session backend not configured. Call configure_session_backend() first."
         )
     return _session_backend
+
+
+def get_session_store() -> SessionBackend:
+    """Get the currently configured session backend.
+
+    Kept for backward compatibility with the previous SessionStore API.
+    """
+    return get_session_backend()
 
 
 # Backward-compatible SessionStore class (deprecated)
@@ -163,7 +186,9 @@ class SessionStore:
     def session_count(self) -> int:
         """Number of unique sessions currently tracked (for monitoring)."""
         with self._lock:
-            keys = set(self._attacker_detected) | set(self._tool_history) | set(self._call_timestamps)
+            keys = (
+                set(self._attacker_detected) | set(self._tool_history) | set(self._call_timestamps)
+            )
             return len(keys)
 
     def clear(self) -> None:
@@ -182,7 +207,14 @@ class SessionStore:
 def mark_attacker_detected(session_id: str) -> None:
     """Mark a session as having triggered a ghost tool (attacker detected)."""
     import asyncio
+
     backend = get_session_backend()
+    if isinstance(backend, SessionStore):
+        backend.mark_attacker(session_id)
+        return
+    if isinstance(backend, InMemorySessionBackend):
+        backend.mark_attacker_sync(session_id)
+        return
     try:
         loop = asyncio.get_event_loop()
     except RuntimeError:
@@ -194,7 +226,12 @@ def mark_attacker_detected(session_id: str) -> None:
 def is_attacker_detected(session_id: str) -> bool:
     """Check if this session has been flagged as an attacker."""
     import asyncio
+
     backend = get_session_backend()
+    if isinstance(backend, SessionStore):
+        return backend.is_attacker(session_id)
+    if isinstance(backend, InMemorySessionBackend):
+        return backend.is_attacker_sync(session_id)
     try:
         loop = asyncio.get_event_loop()
     except RuntimeError:
@@ -206,7 +243,14 @@ def is_attacker_detected(session_id: str) -> bool:
 def record_tool_call(session_id: str, tool_name: str) -> None:
     """Record a tool call in the session history."""
     import asyncio
+
     backend = get_session_backend()
+    if isinstance(backend, SessionStore):
+        backend.record_tool(session_id, tool_name)
+        return
+    if isinstance(backend, InMemorySessionBackend):
+        backend.record_tool_call_sync(session_id, tool_name, datetime.utcnow())
+        return
     try:
         loop = asyncio.get_event_loop()
     except RuntimeError:
@@ -218,7 +262,12 @@ def record_tool_call(session_id: str, tool_name: str) -> None:
 def get_session_tool_history(session_id: str) -> List[str]:
     """Get the tool call history for a session."""
     import asyncio
+
     backend = get_session_backend()
+    if isinstance(backend, SessionStore):
+        return backend.get_tool_history(session_id)
+    if isinstance(backend, InMemorySessionBackend):
+        return backend.get_tool_history_sync(session_id)
     try:
         loop = asyncio.get_event_loop()
     except RuntimeError:
@@ -230,7 +279,12 @@ def get_session_tool_history(session_id: str) -> List[str]:
 def check_session_rate_limit(session_id: str, max_per_minute: int) -> bool:
     """Check if session is within rate limit. Returns True if allowed, False if exceeded."""
     import asyncio
+
     backend = get_session_backend()
+    if isinstance(backend, SessionStore):
+        return backend.check_rate_limit(session_id, max_per_minute)
+    if isinstance(backend, InMemorySessionBackend):
+        return backend.check_rate_limit_sync(session_id, max_per_minute)
     try:
         loop = asyncio.get_event_loop()
     except RuntimeError:
@@ -260,7 +314,10 @@ async def fingerprint_attack(
     session_id = _extract_session_id(context)
 
     # Get tool call history
-    tool_history = get_session_tool_history(session_id)
+    try:
+        tool_history = get_session_tool_history(session_id)
+    except RuntimeError:
+        tool_history = []
 
     # Try to extract conversation history (may not be available in MCP)
     conversation = _extract_conversation_history(context)
