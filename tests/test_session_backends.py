@@ -5,6 +5,7 @@ import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
 import pytest
+import pytest_asyncio
 
 from honeymcp.storage.session_backend import SessionBackend
 from honeymcp.storage.memory_backend import InMemorySessionBackend
@@ -27,7 +28,7 @@ def memory_backend():
     return InMemorySessionBackend(ttl=60, max_size=100)
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def redis_backend():
     """Create a Redis session backend for testing."""
     if not REDIS_AVAILABLE:
@@ -47,7 +48,7 @@ async def redis_backend():
     await backend.close()
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def sqlite_backend():
     """Create a SQLite session backend for testing."""
     if not SQLITE_AVAILABLE:
@@ -67,7 +68,7 @@ async def sqlite_backend():
 
 
 # Parametrize tests to run against all backends
-@pytest.fixture(params=["memory", "redis", "sqlite"])
+@pytest_asyncio.fixture(params=["memory", "redis", "sqlite"])
 async def backend(request):
     """Parametrized fixture that provides all backend types."""
     if request.param == "memory":

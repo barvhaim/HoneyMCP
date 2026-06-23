@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import smtplib
+import inspect
 from abc import ABC, abstractmethod
 from datetime import datetime
 from email.mime.text import MIMEText
@@ -13,6 +14,14 @@ import aiohttp
 from honeymcp.models.alerts import Alert, AlertChannel, AlertConfig
 
 logger = logging.getLogger(__name__)
+
+
+async def _post(session: aiohttp.ClientSession, url: str, **kwargs):
+    """Call session.post, supporting aiohttp and AsyncMock-style awaitables."""
+    response = session.post(url, **kwargs)
+    if inspect.isawaitable(response):
+        response = await response
+    return response
 
 
 class NotifierBase(ABC):
@@ -164,12 +173,12 @@ class SlackNotifier(NotifierBase):
 
         try:
             async with aiohttp.ClientSession() as session:
-                response = await session.post(
+                async with await _post(
+                    session,
                     self.config.slack_webhook_url,
                     json=payload,
                     timeout=aiohttp.ClientTimeout(total=10),
-                )
-                async with response:
+                ) as response:
                     if response.status == 200:
                         return True
                     else:
@@ -244,12 +253,12 @@ class PagerDutyNotifier(NotifierBase):
 
         try:
             async with aiohttp.ClientSession() as session:
-                response = await session.post(
+                async with await _post(
+                    session,
                     "https://events.pagerduty.com/v2/enqueue",
                     json=payload,
                     timeout=aiohttp.ClientTimeout(total=10),
-                )
-                async with response:
+                ) as response:
                     if response.status == 202:
                         return True
                     else:
@@ -436,10 +445,12 @@ class WebhookNotifier(NotifierBase):
             True if successful
         """
         try:
-            response = await session.post(
-                url, json=payload, timeout=aiohttp.ClientTimeout(total=10)
-            )
-            async with response:
+            async with await _post(
+                session,
+                url,
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as response:
                 if 200 <= response.status < 300:
                     logger.debug("Webhook %s returned %d", url, response.status)
                     return True

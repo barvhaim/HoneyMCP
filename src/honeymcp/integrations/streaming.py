@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from datetime import datetime
-from typing import AsyncIterator, Dict, List, Optional, Set
+from typing import Any, AsyncIterator, Dict, List, Optional
 from collections import deque
 
 from honeymcp.models.alerts import StreamEvent
@@ -35,7 +35,7 @@ class EventStream:
         self._clients: Dict[str, asyncio.Queue] = {}
 
         # Client filters
-        self._client_filters: Dict[str, Dict[str, any]] = {}
+        self._client_filters: Dict[str, Dict[str, Any]] = {}
 
         logger.info("Event stream initialized with history size %d", max_history)
 
@@ -69,19 +69,26 @@ class EventStream:
         )
 
         try:
+            sent_initial_event = False
+
             # Send historical events if requested
             history_sent = False
             if send_history:
                 for event in self._history:
                     if self._matches_filters(event, client_id):
-                        history_sent = True
+                        sent_initial_event = True
                         yield event.to_sse_format()
-            if not history_sent:
-                if send_history:
-                    self.unsubscribe(client_id)
+
+            if send_history and not sent_initial_event:
+                # Allow callers that only probe the stream once to close cleanly
+                # without waiting for a keepalive timeout. Clients that keep
+                # iterating are registered again immediately after this yield.
+                self.unsubscribe(client_id)
                 yield ": connected\n\n"
-                if send_history:
-                    return
+                self._clients[client_id] = queue
+                self._client_filters[client_id] = {
+                    "event_types": event_types or [],
+                }
 
             # Stream new events
             while True:
@@ -165,7 +172,7 @@ class EventStream:
 
         await self._publish(stream_event)
 
-    async def publish_alert(self, alert_data: Dict[str, any]) -> None:
+    async def publish_alert(self, alert_data: Dict[str, Any]) -> None:
         """Publish alert notification to all subscribers.
 
         Args:
@@ -243,7 +250,7 @@ class EventStream:
 
         logger.info("Event stream shutdown complete")
 
-    def get_stats(self) -> Dict[str, any]:
+    def get_stats(self) -> Dict[str, Any]:
         """Get streaming statistics.
 
         Returns:

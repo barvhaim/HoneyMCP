@@ -610,8 +610,8 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
         format: ExportFormat = Query(default=ExportFormat.HTML, description="Export format"),
     ) -> Response:
         """Export forensic report in specified format."""
-        # Note: In a real implementation, you'd store reports and retrieve them
-        # For now, we'll generate on-the-fly from session_id embedded in report_id
+        # Note: In a real implementation, you'd store reports and retrieve them.
+        # For now, reports are generated on demand via /reports/generate.
         raise HTTPException(
             status_code=501,
             detail="Report export not yet implemented - use /reports/generate and save the response",

@@ -2,9 +2,9 @@
 
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
+from datetime import datetime
 import logging
 import asyncio
-from datetime import datetime
 
 from fastmcp import FastMCP
 from fastmcp.tools.tool import ToolResult
@@ -13,6 +13,7 @@ from mcp.types import TextContent
 from honeymcp.core.fingerprinter import (
     configure_session_backend,
     fingerprint_attack,
+    get_session_backend,
     mark_attacker_detected,
     resolve_session_id,
 )
@@ -334,8 +335,10 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
         context = kwargs.get("context", {})
         session_id = resolve_session_id(context)
 
+        session_backend = get_session_backend()
+
         # Record all tool calls for sequence tracking
-        await backend.record_tool_call(session_id, name, datetime.utcnow())
+        await session_backend.record_tool_call(session_id, name, datetime.utcnow())
 
         # === Allowlist bypass ===
         if session_id in allowlist_set:
@@ -345,7 +348,7 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
 
         # === Rate limiting ===
         if config.rate_limit_max_calls_per_minute is not None:
-            if not await backend.check_rate_limit(
+            if not await session_backend.check_rate_limit(
                 session_id, config.rate_limit_max_calls_per_minute
             ):
                 logger.warning("Rate limit exceeded for session %s", session_id)
@@ -362,7 +365,7 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
                     await asyncio.sleep(2.0)
 
         # === Protection mode handling for detected attackers ===
-        if await backend.is_attacker(session_id):
+        if await session_backend.is_attacker(session_id):
             if config.protection_mode == ProtectionMode.SCANNER:
                 # Lockout mode - return error for ALL tools
                 logger.info(
@@ -414,10 +417,10 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
             )
 
             # ATTACK DETECTED! Mark session as attacker and log details
-            if isinstance(backend, InMemorySessionBackend):
+            if isinstance(session_backend, InMemorySessionBackend):
                 mark_attacker_detected(fingerprint.session_id)
             else:
-                await backend.mark_attacker(fingerprint.session_id)
+                await session_backend.mark_attacker(fingerprint.session_id)
             logger.warning(
                 "ATTACK DETECTED: Ghost tool '%s' triggered (session: %s, event: %s, "
                 "threat: %s, category: %s, args: %s, client: %s, tool_seq: %s)",

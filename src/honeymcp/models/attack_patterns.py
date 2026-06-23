@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 class AttackPattern(BaseModel):
     """Detected attack pattern across multiple events.
-    
+
     Represents a correlation of multiple attack events that share
     common characteristics, indicating coordinated attacks, campaigns,
     or anomalous behavior.
@@ -33,10 +33,8 @@ class AttackPattern(BaseModel):
         default_factory=dict,
         description="Pattern-specific attributes and metrics",
     )
-    
-    severity: str = Field(
-        description="Pattern severity: low, medium, high, critical"
-    )
+
+    severity: str = Field(description="Pattern severity: low, medium, high, critical")
 
     description: str = Field(description="Human-readable pattern description")
     recommendations: List[str] = Field(
@@ -58,14 +56,14 @@ class AttackPattern(BaseModel):
                     "characteristics": {
                         "session_count": 3,
                         "common_tools": ["list_cloud_secrets"],
-                        "time_window": "5 minutes"
+                        "time_window": "5 minutes",
                     },
                     "severity": "high",
                     "description": "Coordinated attack: 3 sessions using list_cloud_secrets",
                     "recommendations": [
                         "Block source IPs if available",
-                        "Review authentication logs"
-                    ]
+                        "Review authentication logs",
+                    ],
                 }
             ]
         }
@@ -74,7 +72,7 @@ class AttackPattern(BaseModel):
 
 class AttackerProfile(BaseModel):
     """Behavioral profile of an attacker or attack source.
-    
+
     Aggregates attack behavior over time to build a fingerprint
     of the attacker's techniques, preferences, and sophistication.
     """
@@ -95,7 +93,7 @@ class AttackerProfile(BaseModel):
         description="Average attacks per hour",
         ge=0.0,
     )
-    
+
     sophistication_score: float = Field(
         description="Sophistication score 0.0-1.0 based on techniques used",
         ge=0.0,
@@ -117,12 +115,9 @@ class AttackerProfile(BaseModel):
                     "unique_tools_used": [
                         "list_cloud_secrets",
                         "execute_shell_command",
-                        "dump_database_credentials"
+                        "dump_database_credentials",
                     ],
-                    "attack_categories": {
-                        "exfiltration": 10,
-                        "rce": 5
-                    },
+                    "attack_categories": {"exfiltration": 10, "rce": 5},
                     "first_seen": "2026-03-28T10:00:00Z",
                     "last_seen": "2026-03-28T12:00:00Z",
                     "attack_velocity": 7.5,
@@ -131,8 +126,8 @@ class AttackerProfile(BaseModel):
                         "tool_sequence": ["list_cloud_secrets", "execute_shell_command"],
                         "preferred_categories": [["exfiltration", 10], ["rce", 5]],
                         "attack_duration_hours": 2.0,
-                        "avg_time_between_attacks": 480.0
-                    }
+                        "avg_time_between_attacks": 480.0,
+                    },
                 }
             ]
         }
@@ -141,21 +136,13 @@ class AttackerProfile(BaseModel):
 
 class PatternSummary(BaseModel):
     """Summary statistics for detected patterns.
-    
+
     Provides aggregate metrics across all detected patterns
     for dashboard display and reporting.
     """
 
     total_patterns: int = Field(description="Total number of patterns detected")
-    by_type: Dict[str, int] = Field(
-        description="Count of patterns by type"
-    )
-    by_severity: Dict[str, int] = Field(
-        description="Count of patterns by severity"
-    )
-    high_confidence_count: int = Field(
-        description="Number of patterns with confidence >= 0.8"
-    )
-    recent_patterns: List[AttackPattern] = Field(
-        description="Most recent patterns (last 10)"
-    )
+    by_type: Dict[str, int] = Field(description="Count of patterns by type")
+    by_severity: Dict[str, int] = Field(description="Count of patterns by severity")
+    high_confidence_count: int = Field(description="Number of patterns with confidence >= 0.8")
+    recent_patterns: List[AttackPattern] = Field(description="Most recent patterns (last 10)")

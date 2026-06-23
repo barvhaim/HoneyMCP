@@ -4,7 +4,6 @@ import time
 import threading
 from datetime import datetime
 from typing import Dict, List, Tuple
-from collections import defaultdict
 
 from honeymcp.storage.session_backend import SessionBackend
 
@@ -56,8 +55,15 @@ class InMemorySessionBackend(SessionBackend):
     def _maybe_cleanup(self) -> None:
         """Run a full sweep every _CLEANUP_INTERVAL writes."""
         self._write_count += 1
-        if self._write_count % self._CLEANUP_INTERVAL == 0:
+        if self._is_over_max_size() or self._write_count % self._CLEANUP_INTERVAL == 0:
             self._evict_expired()
+
+    def _is_over_max_size(self) -> bool:
+        """Return True when any tracked store exceeds the configured size."""
+        return any(
+            len(store) > self._max_size
+            for store in (self._attacker_detected, self._tool_history, self._call_timestamps)
+        )
 
     def _evict_expired(self) -> None:
         """Remove all expired entries and enforce max_size."""

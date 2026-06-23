@@ -209,6 +209,13 @@ class PatternDetector:
                 avg_interval = duration / (len(sorted_events) - 1)
                 duration = duration + avg_interval
 
+            # Calculate observed duration. If the latest event is not current, include
+            # time since first sighting so sustained but currently quiet campaigns are
+            # still represented as long-running.
+            event_span = sorted_events[-1].timestamp - sorted_events[0].timestamp
+            age_span = datetime.utcnow() - sorted_events[0].timestamp
+            duration = max(duration, event_span, age_span)
+
             if duration < self.campaign_min_duration:
                 continue
 
@@ -229,7 +236,7 @@ class PatternDetector:
             event_count_score = min(1.0, len(sorted_events) / 20)
             diversity_score = min(1.0, len(unique_tools) / 3)
 
-            confidence = duration_score * 0.35 + event_count_score * 0.3 + diversity_score * 0.35
+            confidence = duration_score * 0.3 + event_count_score * 0.3 + diversity_score * 0.4
 
             # Determine severity
             if duration_hours >= 48 or len(sorted_events) >= 15:
@@ -320,12 +327,14 @@ class PatternDetector:
         else:
             std_dev = 0
 
-        # Find tools with anomalous usage. A dominant tool can be operationally
-        # anomalous even when a small number of categories makes 3-sigma too strict.
-        threshold = avg_usage * 2
+        # Find tools with anomalous usage. Small catalogs often have a dominant
+        # tool without exceeding a strict 3σ threshold, so combine a z-score
+        # signal with a dominance ratio.
+        threshold = avg_usage + std_dev if std_dev > 0 else avg_usage * 2
 
         for tool, count in tool_counts.items():
-            if count < threshold or count < 10:
+            dominance_ratio = count / total_events
+            if count <= threshold and dominance_ratio < 0.5:
                 continue
 
             # This tool is used anomalously often
