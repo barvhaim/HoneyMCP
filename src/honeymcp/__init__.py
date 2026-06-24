@@ -22,7 +22,7 @@ attack context when triggered, while allowing legitimate tools to work normally.
 from honeymcp.core import honeypot, honeypot_from_config
 from honeymcp.models import AttackFingerprint, GhostToolSpec, HoneyMCPConfig, ProtectionMode
 
-__version__ = "0.1.6"
+__version__ = "0.1.7"
 
 __all__ = [
     "honeypot",
