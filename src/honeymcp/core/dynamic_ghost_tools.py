@@ -2,9 +2,10 @@
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from honeymcp.llm.analyzers import ToolInfo
 from honeymcp.llm.clients import get_chat_llm_client
@@ -12,6 +13,96 @@ from honeymcp.llm.prompts import format_prompt
 from honeymcp.models.ghost_tool_spec import GhostToolSpec
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_json(response: str) -> Union[dict, list]:
+    """Extract and parse a JSON object/array from a raw LLM response.
+
+    LLM output frequently wraps JSON in code fences, adds prose before or
+    after it, uses trailing commas, or leaves literal newlines/control
+    characters inside string values. Any of these makes ``json.loads`` fail
+    with errors like "Expecting ',' delimiter". This helper progressively
+    cleans the response and retries so callers get valid data instead of a
+    hard failure.
+
+    Args:
+        response: The raw text returned by the LLM.
+
+    Returns:
+        The parsed JSON value (dict or list).
+
+    Raises:
+        json.JSONDecodeError: If no valid JSON can be recovered.
+    """
+    text = response.strip()
+
+    # 1. Strip Markdown code fences (```json ... ``` or ``` ... ```).
+    if "```json" in text:
+        text = text.split("```json", 1)[1].split("```", 1)[0].strip()
+    elif "```" in text:
+        text = text.split("```", 1)[1].split("```", 1)[0].strip()
+
+    # 2. Isolate the outermost JSON structure, dropping any surrounding prose.
+    #    Prefer whichever of {...} / [...] appears first.
+    obj_start = text.find("{")
+    arr_start = text.find("[")
+    starts = [s for s in (obj_start, arr_start) if s != -1]
+    if starts:
+        start = min(starts)
+        close = "}" if start == obj_start else "]"
+        end = text.rfind(close)
+        if end > start:
+            text = text[start : end + 1]
+
+    # 3. First attempt: parse as-is.
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as first_error:
+        # 4. Repair pass: remove trailing commas and escape stray control
+        #    characters (raw newlines/tabs) that appear inside string values.
+        repaired = re.sub(r",(\s*[}\]])", r"\1", text)
+        repaired = _escape_control_chars_in_strings(repaired)
+        try:
+            return json.loads(repaired)
+        except json.JSONDecodeError:
+            # Re-raise the original error for the clearest diagnostics.
+            raise first_error
+
+
+def _escape_control_chars_in_strings(text: str) -> str:
+    """Escape raw control characters that occur inside JSON string literals.
+
+    LLMs often emit multi-line string values with literal newlines/tabs, which
+    are invalid inside JSON strings and must be ``\\n`` / ``\\t``. This walks
+    the text tracking whether we are inside a string (respecting escapes) and
+    escapes control characters only there, leaving structural whitespace alone.
+    """
+    out = []
+    in_string = False
+    escaped = False
+    replacements = {"\n": "\\n", "\r": "\\r", "\t": "\\t"}
+    for ch in text:
+        if in_string:
+            if escaped:
+                out.append(ch)
+                escaped = False
+            elif ch == "\\":
+                out.append(ch)
+                escaped = True
+            elif ch == '"':
+                out.append(ch)
+                in_string = False
+            elif ch in replacements:
+                out.append(replacements[ch])
+            elif ord(ch) < 0x20:
+                out.append(f"\\u{ord(ch):04x}")
+            else:
+                out.append(ch)
+        else:
+            out.append(ch)
+            if ch == '"':
+                in_string = True
+    return "".join(out)
 
 
 @dataclass
@@ -160,14 +251,9 @@ class DynamicGhostToolGenerator:
             if response is None:
                 raise ValueError("LLM returned empty response")
 
-            # Try to extract JSON from response (handle cases where LLM adds extra text)
-            response = response.strip()
-            if "```json" in response:
-                response = response.split("```json")[1].split("```")[0].strip()
-            elif "```" in response:
-                response = response.split("```")[1].split("```")[0].strip()
-
-            analysis = json.loads(response)
+            # Extract JSON from response (handles code fences, surrounding
+            # prose, trailing commas, and unescaped control characters).
+            analysis = _extract_json(response)
 
             # Validate required fields
             required_fields = ["server_purpose", "domain", "security_sensitive_areas"]
@@ -250,13 +336,7 @@ class DynamicGhostToolGenerator:
             if response is None:
                 raise ValueError("LLM returned empty response")
 
-            response = response.strip()
-            if "```json" in response:
-                response = response.split("```json")[1].split("```")[0].strip()
-            elif "```" in response:
-                response = response.split("```")[1].split("```")[0].strip()
-
-            tools_data = json.loads(response)
+            tools_data = _extract_json(response)
 
             if not isinstance(tools_data, list):
                 raise ValueError("LLM response must be a JSON array")
@@ -409,14 +489,7 @@ class DynamicGhostToolGenerator:
             if response is None:
                 raise ValueError("LLM returned empty response")
 
-            # Try to extract JSON from response
-            response = response.strip()
-            if "```json" in response:
-                response = response.split("```json")[1].split("```")[0].strip()
-            elif "```" in response:
-                response = response.split("```")[1].split("```")[0].strip()
-
-            mocks_data = json.loads(response)
+            mocks_data = _extract_json(response)
 
             if not isinstance(mocks_data, list):
                 raise ValueError("LLM response must be a JSON array")

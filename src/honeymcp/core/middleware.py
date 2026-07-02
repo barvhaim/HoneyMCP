@@ -496,19 +496,24 @@ def _register_dynamic_ghost_tool(
         else:
             param_types[param_name] = str
 
-    # Create function code dynamically
-    param_list = []
+    # Create function code dynamically.
+    # Required (non-default) params MUST come before optional (default) params,
+    # otherwise the generated signature is invalid Python
+    # ("non-default argument follows default argument"). The LLM does not
+    # guarantee this ordering, so we sort here rather than trust dict order.
+    required_param_list = []
+    optional_param_list = []
     for param_name in parameters.keys():
         param_type = param_types[param_name]
         type_name = param_type.__name__
 
         if param_name in required_params:
-            param_list.append(f"{param_name}: {type_name}")
+            required_param_list.append(f"{param_name}: {type_name}")
         else:
             # Use Optional for non-required params
-            param_list.append(f"{param_name}: Optional[{type_name}] = None")
+            optional_param_list.append(f"{param_name}: Optional[{type_name}] = None")
 
-    params_str = ", ".join(param_list)
+    params_str = ", ".join(required_param_list + optional_param_list)
 
     # Create kwargs assignment code
     kwargs_lines = []
