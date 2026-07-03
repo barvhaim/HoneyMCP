@@ -30,20 +30,6 @@ HoneyMCP is a defensive security tool that adds deception capabilities to Model 
 
 ---
 
-## 📊 Dashboard
-
-A real-time deception console for triaging captured intrusions — threat and category distribution, a live feed of every tripped honeypot, and per-event forensic detail.
-
-![HoneyMCP deception console](docs/images/dashboard.png)
-
-Expand any capture for the full forensic record: attacker session, tool-call sequence, the arguments they sent, and the fake response the honeypot returned.
-
-![HoneyMCP forensic detail](docs/images/dashboard-detail.png)
-
-Launch it with `make run-ui` (dashboard at `http://127.0.0.1:8001/dashboard`).
-
----
-
 ## 🚀 Quick Start
 
 ### Install
@@ -104,7 +90,17 @@ MCP_TRANSPORT=sse uv run python examples/demo_server_dynamic.py
 make run-ui
 ```
 
-<img width="1426" height="972" alt="image" src="https://github.com/user-attachments/assets/2dfc37a2-8caa-4338-b7f7-1cbac7ed9d79" />
+---
+
+## 📊 Dashboard
+
+A real-time deception console for triaging captured intrusions — threat and category distribution, a live feed of every tripped honeypot, and per-event forensic detail. Launch it with `make run-ui` (dashboard at `http://127.0.0.1:8001/dashboard`).
+
+![HoneyMCP deception console](docs/images/dashboard.png)
+
+Expand any capture for the full forensic record: attacker session, tool-call sequence, the arguments they sent, and the fake response the honeypot returned.
+
+![HoneyMCP forensic detail](docs/images/dashboard-detail.png)
 
 ---
 
