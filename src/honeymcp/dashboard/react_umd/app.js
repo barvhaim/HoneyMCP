@@ -41,7 +41,7 @@ const THREAT_COLORS = {
   medium: "var(--med)",
   low: "var(--low)",
 };
-const CAT_COLORS = ["#ffc23d", "#7dffb0", "#ff8a3d", "#5ac8ff", "#c88dff", "#ff4d5e", "#8fd694"];
+const CAT_COLORS = ["#6d7cff", "#4fbf8f", "#f0a24b", "#57b6e6", "#b18bf0", "#f26d78", "#ddc158"];
 
 // --- icons ---
 
@@ -111,7 +111,7 @@ function Capture({ event, fresh }) {
       <div className="capture-summary" onClick={() => setOpen(o => !o)}>
         <span className={`tag-badge ${level}`}>{event.threat_level}</span>
         <div className="capture-body">
-          <div className="capture-title"><span className="prompt">⟩</span>{event.ghost_tool_called}</div>
+          <div className="capture-title">{event.ghost_tool_called}</div>
           <div className="capture-meta">
             <span>{event.attack_category}</span>
             <span className="sep">/</span>
@@ -171,7 +171,7 @@ function Capture({ event, fresh }) {
 function FrameHead({ label, count }) {
   return (
     <div className="frame-head">
-      <span className="tag"><span className="bracket">[</span> {label} <span className="bracket">]</span></span>
+      <span className="tag">{label}</span>
       <span className="rule" />
       {count !== undefined && <span className="count">{count}</span>}
     </div>
@@ -217,7 +217,7 @@ function App() {
       setData({ metrics: metricsData, events: eventsResp.events || [], total: eventsResp.total || 0 });
     } catch (err) {
       console.error(err);
-      setError("LINK DOWN — cannot reach HoneyMCP API. Is the server running?");
+      setError("Cannot reach the HoneyMCP API. Is the server running?");
     } finally {
       setLoading(false);
     }
@@ -276,7 +276,7 @@ function App() {
     setClearing(true); setError(null); setNotice(null);
     try {
       const result = await fetchJson("/events", {}, { method: "DELETE" });
-      setNotice(`PURGED ${result.deleted_events || 0} capture(s).`);
+      setNotice(`Purged ${result.deleted_events || 0} capture(s).`);
       await loadData();
     } catch (err) {
       console.error(err);
@@ -291,26 +291,24 @@ function App() {
   return (
     <div className="container">
       <header className="masthead">
-        <div>
-          <div className="brand-mark">
+        <div className="brand-mark">
+          <span className="brand-logo"><I.Shield /></span>
+          <div className="brand-text">
             <span className="brand-glyph">Honey<span className="hl">MCP</span></span>
-            <span className="brand-tag">deception console</span>
+            <span className="brand-sub">Deception console — MCP intrusion &amp; exfiltration monitoring</span>
           </div>
-          <p className="brand-sub">
-            monitoring MCP tool surface for intrusion &amp; exfiltration<span className="cursor" />
-          </p>
         </div>
         <div className="status-cluster">
           <span className={`link-status ${live ? "online" : "offline"}`}>
             <span className="beacon" />
-            {live ? "live · streaming" : "polling"}
+            {live ? "Live" : "Polling"}
           </span>
-          <span className="clock">{clock} · local</span>
+          <span className="clock">{clock}</span>
         </div>
       </header>
 
       {/* filters / console */}
-      <FrameHead label="query" />
+      <FrameHead label="Filters" />
       <section className="console">
         <div className="console-grid">
           <div className="field">
@@ -329,12 +327,12 @@ function App() {
           </div>
           <div className="field">
             <button className="primary" onClick={loadData} disabled={loading}>
-              {loading ? "scanning…" : "run query"}
+              {loading ? "Loading…" : "Apply filters"}
             </button>
           </div>
           <div className="field">
             <button className="ghost" onClick={handleClear} disabled={clearing || loading}>
-              {clearing ? "purging…" : "purge data"}
+              {clearing ? "Purging…" : "Purge data"}
             </button>
           </div>
         </div>
@@ -344,7 +342,7 @@ function App() {
       {error && <div className="notice err"><I.Alert /><span>{error}</span></div>}
 
       {/* telemetry */}
-      <FrameHead label="telemetry" />
+      <FrameHead label="Overview" />
       <section className="telemetry">
         <Stat label="total captures" value={m?.total_attacks} icon={<I.Shield />} loading={loading && !m} />
         <Stat label="last 24h" value={m?.attacks_last_24h} icon={<I.Pulse />} tone="honey" loading={loading && !m} />
@@ -353,29 +351,27 @@ function App() {
       </section>
 
       {/* distribution */}
-      <div className="frame-head" style={{ marginTop: 8, marginBottom: 12 }}>
-        <span className="rule" />
-      </div>
+      <FrameHead label="Distribution" />
       <section className="distro">
         <DistroBlock
-          title="by threat level"
+          title="By threat level"
           data={m?.by_threat_level}
-          colorFor={(k) => THREAT_COLORS[k.toLowerCase()] || "var(--phos-dim)"}
+          colorFor={(k) => THREAT_COLORS[k.toLowerCase()] || "var(--text-4)"}
         />
         <DistroBlock
-          title="by attack category"
+          title="By attack category"
           data={m?.by_category}
           colorFor={(k, i) => CAT_COLORS[i % CAT_COLORS.length]}
         />
       </section>
 
       {/* feed */}
-      <FrameHead label="intrusion feed" count={`${data.total} captured`} />
+      <FrameHead label="Intrusion feed" count={`${data.total} captured`} />
       <section className="feed">
         {data.events.length === 0 && !loading ? (
           <div className="empty">
-            <span className="big">NO INTRUSIONS DETECTED</span>
-            Traps armed. Nothing has tripped a ghost tool for this query.
+            <span className="big">No intrusions detected</span>
+            Traps are armed. Nothing has tripped a ghost tool for this query.
           </div>
         ) : (
           data.events.map(evt => (
