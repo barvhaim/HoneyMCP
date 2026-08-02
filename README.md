@@ -355,7 +355,7 @@ OPENAI_API_KEY=your_key_here
 
 Supported providers:
 - `LLM_PROVIDER=openai`: Requires `OPENAI_API_KEY`
-- `LLM_PROVIDER=watsonx`: Requires `WATSONX_URL`, `WATSONX_APIKEY`, `WATSONX_PROJECT_ID`
+- `LLM_PROVIDER=watsonx`: Requires `WATSONX_API_ENDPOINT`, `WATSONX_API_KEY`, `WATSONX_PROJECT_ID`
 - `LLM_PROVIDER=ollama`: Requires `OLLAMA_API_BASE` (default: `http://localhost:11434`)
 
 HoneyMCP loads `.env.honeymcp` first, then falls back to `.env`. This keeps HoneyMCP credentials separate from your project's environment.

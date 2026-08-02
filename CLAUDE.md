@@ -27,9 +27,9 @@ uv run pytest tests/test_dynamic_tools.py       # single file
 uv run pytest tests/test_middleware_dispatch.py::test_name  # single test
 uv run pytest --cov=honeymcp                    # with coverage
 
-make format             # black src/    (also: black src/ examples/ tests/)
+make format             # black src/
 make lint               # black --check src/ + pylint src/
-uv run ruff check src/  # ruff is configured too (.ruff_cache present)
+uv run ruff check src/  # ruff is a dev dep but NOT wired into make targets or CI
 
 make run-example        # uv run python examples/demo_server.py
 make run-ui             # dashboard at http://127.0.0.1:8001/dashboard
@@ -38,6 +38,8 @@ make build              # uv build
 ```
 
 > Note: `AGENTS.md` claims `make lint`/`make format` use ruff+mypy — that is stale. The Makefile uses **black + pylint**. When the two docs disagree, trust the Makefile and `pyproject.toml`.
+
+CI (`.github/workflows/ci.yml`) runs `make lint` plus `uv run pytest` on Python 3.11/3.12/3.13, and installs with `uv sync --locked` — so **commit `uv.lock` changes** or CI fails at install. `pylint` is scored, not pass/fail: `fail-under = 7.0` (`pyproject.toml`). Black uses `line-length = 100`.
 
 ### Running the Demo Server
 
@@ -69,11 +71,13 @@ AI Agent (Claude, etc.)
     ↓ MCP Protocol
 HoneyMCP-wrapped FastMCP server
     └─ intercepting_call_tool()  (core/middleware.py)
+        0. run_middleware is False?     → re-entrant call, delegate WITHOUT recording
         1. Resolve/track session (storage/session_backend.py) & record_tool_call()
         2. Allowlist bypass?            → run real tool
-        3. Rate limit exceeded?         → throttle/block
-        4. is_attacker_detected()?      → apply protection mode (SCANNER/COGNITIVE)
+        3. Rate limit exceeded?         → throttle (sleep 2s) / block (error)
+        4. is_attacker(session)?        → apply protection mode (SCANNER/COGNITIVE)
         5. Is this a ghost tool?        → fingerprint_attack() + store event + mark attacker
+                                          + optional Slack webhook
         6. Otherwise                    → execute real tool normally
          ↓
 Event Storage (~/.honeymcp/events/YYYY-MM-DD/evt_*.json)
@@ -90,6 +94,13 @@ Event Storage (~/.honeymcp/events/YYYY-MM-DD/evt_*.json)
 - `honeypot_from_config(server, config_path=None)`: loads `HoneyMCPConfig` and forwards every field to `honeypot()`.
 - `intercepting_call_tool()`: the interceptor implementing the flow above.
 - `_register_ghost_tool()` / `_register_dynamic_ghost_tool()`: register honeypots as real `@server.tool()`s. Dynamic tools are registered by building a handler from an LLM-generated signature string — the generated output is sanitized (see commit history: "harden dynamic ghost tool generation").
+
+Three subtleties that bite when editing this file:
+- **Re-entry guard.** FastMCP 3.0's middleware chain calls `self.call_tool(..., run_middleware=False)` via `call_next`, re-entering the interceptor a second time. The guard at the top delegates immediately on `run_middleware is False`. Removing it double-records every tool call and corrupts `tool_call_sequence`. Any new bookkeeping must go *after* this guard.
+- **Two dispatch-patching paths.** If the server has a `call_tool` attribute it is replaced outright; otherwise `_patch_tool_access()` is used, with `_call_tool_directly()` as the fallback executor when no `original_call_tool` was captured. Changes to interception must work on both paths.
+- **Backend-dependent attacker marking.** For `InMemorySessionBackend` the code calls the *sync* `mark_attacker_detected()` from `fingerprinter.py`; every other backend uses `await session_backend.mark_attacker()`. The two stores are not interchangeable — keep both branches in sync.
+
+Returns are `ToolResult` objects (`meta={"is_error": True}` for the error paths), not bare strings.
 
 **2. Ghost tools**
 - Static: `core/ghost_tools.py` → `GHOST_TOOL_CATALOG` (dict of `GhostToolSpec`). `get_ghost_tool()` / `list_ghost_tools()` accessors.
@@ -109,7 +120,11 @@ Event Storage (~/.honeymcp/events/YYYY-MM-DD/evt_*.json)
 
 **7. Integrations (`integrations/`)** — `alerting.py` (rules engine), `notifiers.py` (multi-channel delivery + retry), `slack.py` (webhook), `streaming.py` (SSE for the dashboard's `/stream`).
 
-**8. API service (`api/app.py`)** — `create_app()` builds a FastAPI app that serves the React dashboard and exposes `/events`, `/events/{id}`, `/metrics`, `/filters`, `/patterns`, `/profiles`, `/stream`, `/health`. This is what `make run-ui` launches (`honeymcp.api.app:app`). **There is no Streamlit dashboard** — ignore any older reference to one.
+**8. API service (`api/app.py`)** — `create_app(config_path=None)` builds a FastAPI app that serves the React dashboard (`dashboard/react_umd/`, a UMD bundle — no JS build step) and exposes ~35 routes. This is what `make run-ui` launches (`honeymcp.api.app:app`). It's the single largest module in the repo; route groups:
+- Core: `/health`, `/dashboard`, `/events` (GET + DELETE), `/events/{id}`, `/metrics`, `/filters`, `/stream` (SSE)
+- Analysis: `/patterns`, `/patterns/summary`, `/profiles`, `/profiles/{session_id}`
+- Forensics: `/replay/*` (start, control, state, active), `/reports/generate`, `/reports/compare`, `/export/timeline/{session_id}`, `/export/report/{report_id}`
+- Adaptive loop: `/adaptive/*` (metrics, top-tools, recommendations, snapshots, profiles, campaigns, hints, compare-profiles)
 
 **9. LLM integration (`llm/`)**
 - `llm/clients/__init__.py`: `get_chat_llm_client(...)` selects a provider from the `LLM_PROVIDER` env var. Provider enum in `llm/clients/provider_type.py`: **`watsonx`, `openai`, `rits`** (RITS = an OpenAI-compatible endpoint). There is no standalone `llm_client_watsonx.py`.
@@ -142,9 +157,9 @@ LLM_MODEL=openai/gpt-oss-120b
 
 OPENAI_API_KEY=
 
-# watsonx.ai  — note the exact names differ from the client code:
-WATSONX_URL=...              # .env.example name; client also reads WATSONX_API_ENDPOINT
-WATSONX_APIKEY=...           # .env.example name; client also reads WATSONX_API_KEY
+# watsonx.ai — use THESE names; see the mismatch warning below
+WATSONX_API_ENDPOINT=...
+WATSONX_API_KEY=...
 WATSONX_PROJECT_ID=...
 
 # RITS (OpenAI-compatible)
@@ -154,7 +169,7 @@ RITS_API_BASE_URL=http://.../   # without /v1 suffix
 MCP_TRANSPORT=sse            # stdio | http | sse
 ```
 
-> There is a known env-var naming mismatch: `.env.example` uses `WATSONX_URL` / `WATSONX_APIKEY`, while `llm/clients/__init__.py` reads `WATSONX_API_ENDPOINT` / `WATSONX_API_KEY`. Verify which the current code path reads before debugging watsonx auth.
+> **watsonx env-var names are load-bearing.** `llm/clients/__init__.py` reads `WATSONX_API_ENDPOINT` / `WATSONX_API_KEY` / `WATSONX_PROJECT_ID` with **no fallbacks**. An older naming (`WATSONX_URL` / `WATSONX_APIKEY`) was used across `.env.example`, `cli.py`'s init template, and the READMEs; all were corrected to match the client. If you reintroduce the old names, watsonx silently gets `url=None, apikey=None` — and since `fallback_to_static=True` swallows the auth failure, the only symptom is "dynamic tools never generate."
 
 ### Programmatic
 
@@ -189,7 +204,7 @@ Public API (`honeymcp/__init__.py`): `honeypot`, `honeypot_from_config`, `Attack
 
 ## Conventions
 
-- **Async I/O everywhere** for LLM calls and file writes; tool-call interception itself is synchronous (FastMCP constraint).
+- **Async I/O everywhere** — including the interceptor: `intercepting_call_tool` is `async def` and awaits session-backend reads, fingerprinting, event storage, and webhook delivery on the hot path. Ghost-tool `response_generator` callables are the exception: those are sync.
 - Comprehensive type hints; `Optional[T]` / `Union[A, B]`.
 - `logger = logging.getLogger(__name__)`; INFO normal / WARNING fallback / ERROR failure.
 - Catch specific exceptions; **fall back gracefully** (dynamic tools → static tools when `fallback_to_static=True` and LLM generation fails is the canonical example).
@@ -205,3 +220,7 @@ Tests live in `tests/` (`test_*.py`), covering middleware dispatch, protection m
 - **Events not stored:** check write perms on the resolved event path (`HONEYMCP_EVENT_PATH` may override), look for async write errors in logs.
 - **Ghost tools not triggering:** confirm they registered (inspect the server's tool list), names are case-sensitive, review session tracking and `is_attacker_detected()`.
 - **Dashboard empty:** confirm events exist under `~/.honeymcp/events/YYYY-MM-DD/`, that `make run-ui` points at the same event path, and hit `/health` and `/events` directly to isolate API vs. UI.
+
+## Further reading
+
+`docs/` holds deeper per-subsystem docs — `architecture.md`, `adaptive-ghost-tools.md`, `forensics-and-replay.md`, `pattern-analysis.md`, `session-backends.md`, `streaming-and-alerting.md`, `cli-reference.md`, `development.md`, `security-considerations.md`, `use-cases.md`, `faq.md`. Consult these before reverse-engineering a subsystem from source.

@@ -53,7 +53,7 @@ class HoneyMCPConfig(BaseModel):
         ge=1,
     )
 
-    enable_dashboard: bool = Field(default=True, description="Enable Streamlit dashboard")
+    enable_dashboard: bool = Field(default=True, description="Enable the attack dashboard")
 
     webhook_url: Optional[str] = Field(default=None, description="Webhook URL for attack alerts")
 

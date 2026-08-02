@@ -88,8 +88,8 @@ OPENAI_API_KEY=your_openai_api_key_here
 # watsonx.ai Configuration
 # ------------------------
 # Required if LLM_PROVIDER=watsonx
-# WATSONX_URL=https://us-south.ml.cloud.ibm.com/
-# WATSONX_APIKEY=your_watsonx_api_key_here
+# WATSONX_API_ENDPOINT=https://us-south.ml.cloud.ibm.com/
+# WATSONX_API_KEY=your_watsonx_api_key_here
 # WATSONX_PROJECT_ID=your_project_id_here
 
 # Ollama Configuration

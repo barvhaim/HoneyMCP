@@ -347,7 +347,7 @@ OPENAI_API_KEY=your_key_here
 
 支持的 provider：
 - `LLM_PROVIDER=openai`：需要 `OPENAI_API_KEY`
-- `LLM_PROVIDER=watsonx`：需要 `WATSONX_URL`, `WATSONX_APIKEY`, `WATSONX_PROJECT_ID`
+- `LLM_PROVIDER=watsonx`：需要 `WATSONX_API_ENDPOINT`, `WATSONX_API_KEY`, `WATSONX_PROJECT_ID`
 - `LLM_PROVIDER=ollama`：需要 `OLLAMA_API_BASE`（默认：`http://localhost:11434`）
 
 HoneyMCP 会先加载 `.env.honeymcp`，然后回退到 `.env`。这会将 HoneyMCP 凭证与你项目中的其他环境变量分开。

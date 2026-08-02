@@ -140,7 +140,7 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
         fallback_to_static: Use static ghost tools if dynamic generation fails (default: True)
         event_storage_path: Directory for storing attack events
             (default: ~/.honeymcp/events)
-        enable_dashboard: Enable Streamlit dashboard (default: True)
+        enable_dashboard: Enable the attack dashboard (default: True)
         webhook_url: Optional webhook URL for attack alerts (e.g. Slack incoming webhook)
         protection_mode: Protection mode after attacker detection (default: SCANNER)
             - SCANNER: Lockout mode - all tools return errors
