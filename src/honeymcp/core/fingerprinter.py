@@ -18,6 +18,26 @@ logger = logging.getLogger(__name__)
 _session_backend: Optional[SessionBackend] = None
 _legacy_session_store: Optional["SessionStore"] = None
 
+# Stable per-process session id, used when the transport supplies no session
+# identity of its own (stdio). Lazily created under a lock.
+_fallback_session_id: Optional[str] = None
+_fallback_session_lock = threading.Lock()
+
+
+def _process_session_id() -> str:
+    """Return a session id that is stable for the lifetime of this process.
+
+    Under stdio a single client owns the server process, so process identity is
+    the correct session scope. Session-scoped state (attacker flag, rate-limit
+    window, tool history) only works if this value does not change per call.
+    """
+    global _fallback_session_id
+    if _fallback_session_id is None:
+        with _fallback_session_lock:
+            if _fallback_session_id is None:
+                _fallback_session_id = f"sess_{uuid4().hex[:12]}"
+    return _fallback_session_id
+
 
 def configure_session_backend(backend: SessionBackend) -> None:
     """Configure the global session backend.
@@ -484,8 +504,14 @@ def _extract_session_id(context: Any) -> str:
                 if value:
                     return str(value)
 
-    # Fallback: generate a session ID
-    return f"sess_{uuid4().hex[:12]}"
+    # Fallback: no transport-provided session identity (typical for stdio,
+    # where the client owns the process for its whole lifetime).
+    #
+    # This MUST be stable across calls. Minting a fresh uuid per call breaks
+    # every session-scoped feature -- mark_attacker() would write one key and
+    # is_attacker() read another, so lockout, COGNITIVE mode, rate limiting and
+    # tool_call_sequence would all silently no-op.
+    return _process_session_id()
 
 
 def _extract_conversation_history(context: Any) -> Optional[List[Dict]]:

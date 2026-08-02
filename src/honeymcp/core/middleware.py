@@ -31,6 +31,36 @@ from honeymcp.storage.event_store import cleanup_old_events, store_event
 logger = logging.getLogger(__name__)
 
 
+def _deny(text: str) -> "ToolError":
+    """Build the error raised when HoneyMCP refuses a call.
+
+    Denials must be raised, not returned. A real tool's declared
+    ``outputSchema`` still applies to anything we substitute for its result, so
+    returning a ToolResult here fails one way or the other: without
+    ``structured_content`` FastMCP raises "has an output schema but did not
+    return structured content", and with a generic ``{"result": ...}`` the
+    client rejects it as "Invalid structured content" whenever the tool
+    declares a different shape (a list, say). Raising ToolError produces a
+    proper MCP error response, which is what a blocked call actually is.
+    """
+    from fastmcp.exceptions import ToolError
+
+    return ToolError(text)
+
+
+def _mock_result(text: str) -> ToolResult:
+    """Build a COGNITIVE-mode mock result.
+
+    Includes ``structured_content`` so tools that declare an output schema
+    still validate. Mocks are generated per real tool, so a string payload is
+    the expected shape here.
+    """
+    return ToolResult(
+        content=[TextContent(type="text", text=text)],
+        structured_content={"result": text},
+    )
+
+
 def honeypot_from_config(
     server: FastMCP,
     config_path: Optional[Union[str, Path]] = None,
@@ -320,14 +350,19 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
             resolved_arguments = remaining_args[0]
             remaining_args = remaining_args[1:]
 
+        # When invoked from the FastMCP 3 middleware adapter, "pass through"
+        # means continuing that chain rather than calling the (unused)
+        # server.call_tool attribute. The adapter supplies its own call_next.
+        passthrough = kwargs.pop("original_call_tool", None) or original_call_tool
+
         # FastMCP 3.0 re-entry guard: FastMCP's middleware chain calls
         # self.call_tool(..., run_middleware=False) via call_next, which
         # hits this interceptor a second time.  When run_middleware=False
         # we know this is a re-entrant call, so delegate directly without
         # recording again.
         if kwargs.get("run_middleware") is False:
-            if original_call_tool:
-                return await original_call_tool(name, resolved_arguments, *remaining_args, **kwargs)
+            if passthrough:
+                return await passthrough(name, resolved_arguments, *remaining_args, **kwargs)
             return await _call_tool_directly(server, name, resolved_arguments)
 
         # Get or create session ID from context
@@ -341,8 +376,8 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
 
         # === Allowlist bypass ===
         if session_id in allowlist_set:
-            if original_call_tool:
-                return await original_call_tool(name, resolved_arguments, *remaining_args, **kwargs)
+            if passthrough:
+                return await passthrough(name, resolved_arguments, *remaining_args, **kwargs)
             return await _call_tool_directly(server, name, resolved_arguments)
 
         # === Rate limiting ===
@@ -352,14 +387,7 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
             ):
                 logger.warning("Rate limit exceeded for session %s", session_id)
                 if config.rate_limit_action == "block":
-                    return ToolResult(
-                        content=[
-                            TextContent(
-                                type="text", text="Error: Rate limit exceeded. Please slow down."
-                            )
-                        ],
-                        meta={"is_error": True},
-                    )
+                    raise _deny("Error: Rate limit exceeded. Please slow down.")
                 else:  # throttle
                     await asyncio.sleep(2.0)
 
@@ -372,12 +400,7 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
                     name,
                     session_id,
                 )
-                return ToolResult(
-                    content=[
-                        TextContent(type="text", text="Error: Service temporarily unavailable")
-                    ],
-                    meta={"is_error": True},
-                )
+                raise _deny("Error: Service temporarily unavailable")
             if config.protection_mode == ProtectionMode.COGNITIVE:
                 # Deception mode - return mock for real tools, ghost tools continue below
                 if name not in ghost_tool_names and name in real_tool_mocks:
@@ -392,7 +415,7 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
                         mock_response = mock_response.format(**(resolved_arguments or {}))
                     except KeyError:
                         pass  # Fallback to uninterpolated response
-                    return ToolResult(content=[TextContent(type="text", text=mock_response)])
+                    return _mock_result(mock_response)
                 # Ghost tools continue to their normal fake response handling below
 
         # Check if this is a ghost tool
@@ -452,18 +475,88 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
             return ToolResult(content=[TextContent(type="text", text=fake_response)], meta=None)
 
         # Legitimate tool - pass through to original handler
-        if original_call_tool:
-            return await original_call_tool(name, resolved_arguments, *remaining_args, **kwargs)
+        if passthrough:
+            return await passthrough(name, resolved_arguments, *remaining_args, **kwargs)
         # Fallback: call the tool directly
         return await _call_tool_directly(server, name, resolved_arguments)
 
-    # Replace the tool call handler
-    if hasattr(server, "call_tool"):
-        server.call_tool = intercepting_call_tool
-    else:
-        _patch_tool_access(server, intercepting_call_tool, ghost_tool_names)
+    # Install the interceptor.
+    #
+    # FastMCP 3.x dispatches protocol tool calls through its own middleware
+    # chain, NOT through the `server.call_tool` attribute. Patching that
+    # attribute alone leaves the interceptor unreachable on the live transport:
+    # ghost tools still fire (they are registered as ordinary tools), but the
+    # pre-checks -- lockout, COGNITIVE mocks, rate limiting, allowlist, and
+    # tool-call sequence recording -- silently never run. So prefer registering
+    # a real FastMCP middleware, and keep attribute patching for FastMCP 2.x.
+    installed_middleware = False
+    if hasattr(server, "add_middleware"):
+        try:
+            server.add_middleware(_build_fastmcp_middleware(intercepting_call_tool))
+            installed_middleware = True
+        except Exception as e:  # pragma: no cover - depends on fastmcp internals
+            logger.warning(
+                "Could not register FastMCP middleware (%s); falling back to "
+                "patching server.call_tool. Protection modes, rate limiting and "
+                "the allowlist may not be enforced on this FastMCP version.",
+                e,
+            )
+
+    # Only patch the attribute when middleware is NOT installed. Doing both
+    # would run the interceptor twice for a direct server.call_tool() call --
+    # the transport goes through the middleware, whose call_next then reaches
+    # the patched attribute -- double-counting rate limits and tool history.
+    if not installed_middleware:
+        if hasattr(server, "call_tool"):
+            server.call_tool = intercepting_call_tool
+        else:
+            _patch_tool_access(server, intercepting_call_tool, ghost_tool_names)
 
     return server
+
+
+def _build_fastmcp_middleware(interceptor: Callable[..., Any]) -> Any:
+    """Wrap the HoneyMCP interceptor as a FastMCP 3 `Middleware` instance.
+
+    The security logic lives in exactly one place (``intercepting_call_tool``);
+    this adapter only translates FastMCP's middleware calling convention into
+    the interceptor's ``(name, arguments, ...)`` signature.
+    """
+    from fastmcp.server.middleware import Middleware  # local: 3.x-only import
+
+    class HoneyMCPMiddleware(Middleware):
+        """Routes FastMCP tool calls through HoneyMCP's interceptor."""
+
+        async def on_call_tool(self, context: Any, call_next: Any) -> Any:
+            name = getattr(context.message, "name", None)
+            arguments = getattr(context.message, "arguments", None) or {}
+
+            async def _call_next(*_args: Any, **_kwargs: Any) -> Any:
+                # The interceptor decided this call is legitimate; hand control
+                # back to the rest of the FastMCP chain (and the real tool).
+                return await call_next(context)
+
+            # NOTE: deliberately not forwarding context.fastmcp_context.
+            # Its `.session_id` is a fresh per-request UUID, so using it would
+            # give every call a different session key and break all
+            # session-scoped state. resolve_session_id() falls back to a
+            # stable per-process id, which is the right scope for stdio; HTTP
+            # and SSE still resolve a real id from headers/query params.
+            fastmcp_ctx = getattr(context, "fastmcp_context", None)
+            http_context: Dict[str, Any] = {}
+            if fastmcp_ctx is not None:
+                request = getattr(getattr(fastmcp_ctx, "request_context", None), "request", None)
+                if request is not None:
+                    http_context["request"] = request
+
+            return await interceptor(
+                name,
+                arguments=arguments,
+                context=http_context,
+                original_call_tool=_call_next,
+            )
+
+    return HoneyMCPMiddleware()
 
 
 def _register_dynamic_ghost_tool(

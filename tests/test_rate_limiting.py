@@ -153,8 +153,14 @@ class TestMiddlewareRateLimit:
 
     @pytest.mark.asyncio
     async def test_block_action_returns_error(self):
-        """When action=block and limit exceeded, ToolResult error is returned."""
+        """When action=block and limit exceeded, a ToolError is raised.
+
+        Denials are raised rather than returned: a substituted ToolResult must
+        satisfy the real tool's declared outputSchema, which a generic error
+        payload cannot do in general. See _deny() in core/middleware.py.
+        """
         from fastmcp import FastMCP
+        from fastmcp.exceptions import ToolError
         from honeymcp.core.middleware import honeypot
         from honeymcp.core.fingerprinter import configure_session_store
 
@@ -182,10 +188,8 @@ class TestMiddlewareRateLimit:
                     assert not result.meta.get("is_error", False)
 
             # 3rd call should be blocked
-            result = await server.call_tool("echo", {"msg": "hi"})
-            assert hasattr(result, "content")
-            assert "Rate limit exceeded" in result.content[0].text
-            assert result.meta["is_error"] is True
+            with pytest.raises(ToolError, match="Rate limit exceeded"):
+                await server.call_tool("echo", {"msg": "hi"})
 
     @pytest.mark.asyncio
     async def test_throttle_action_adds_delay(self):
