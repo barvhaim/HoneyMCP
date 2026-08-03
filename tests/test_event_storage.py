@@ -1,4 +1,5 @@
 """Tests for event storage system."""
+
 import pytest
 import tempfile
 from pathlib import Path
@@ -27,9 +28,9 @@ class TestEventStore:
             arguments={"namespace": "production"},
             threat_level="critical",
             attack_category="exfiltration",
-            response_sent="Fake credentials response"
+            response_sent="Fake credentials response",
         )
-        
+
         filepath = await store_event(fingerprint, storage_path=temp_event_dir)
         assert filepath.exists()
         assert filepath.suffix == ".json"
@@ -38,7 +39,7 @@ class TestEventStore:
     async def test_list_events(self, temp_event_dir):
         """Test listing stored events."""
         import asyncio
-        
+
         for i in range(3):
             fingerprint = AttackFingerprint(
                 event_id=f"event_{i}",
@@ -48,11 +49,11 @@ class TestEventStore:
                 arguments={},
                 threat_level="high",
                 attack_category="exfiltration",
-                response_sent="Fake response"
+                response_sent="Fake response",
             )
             await store_event(fingerprint, storage_path=temp_event_dir)
             await asyncio.sleep(0.01)  # Small delay to ensure file writes complete
-        
+
         events = await list_events(storage_path=temp_event_dir)
         assert len(events) >= 1  # At least one event should be stored
 
@@ -67,11 +68,11 @@ class TestEventStore:
             arguments={},
             threat_level="high",
             attack_category="exfiltration",
-            response_sent="Fake response"
+            response_sent="Fake response",
         )
-        
+
         filepath = await store_event(fingerprint, storage_path=temp_event_dir)
-        
+
         assert filepath.exists()
         events = await list_events(storage_path=temp_event_dir)
         assert len(events) >= 1
@@ -88,18 +89,35 @@ class TestEventStore:
             arguments={},
             threat_level="high",
             attack_category="exfiltration",
-            response_sent="Fake response"
+            response_sent="Fake response",
         )
-        
+
         await store_event(fingerprint, storage_path=temp_event_dir)
-        
+
         today = date.today()
-        events = await list_events(
-            storage_path=temp_event_dir,
-            start_date=today,
-            end_date=today
-        )
+        events = await list_events(storage_path=temp_event_dir, start_date=today, end_date=today)
         assert len(events) >= 1
+
+    @pytest.mark.asyncio
+    async def test_session_filtering(self, temp_event_dir):
+        """Test filtering events by session ID."""
+        for session_id in ("target_session", "other_session"):
+            fingerprint = AttackFingerprint(
+                event_id=f"{session_id}_event",
+                timestamp=datetime.now(),
+                session_id=session_id,
+                ghost_tool_called="session_filter_tool",
+                arguments={},
+                threat_level="high",
+                attack_category="exfiltration",
+                response_sent="Fake response",
+            )
+            await store_event(fingerprint, storage_path=temp_event_dir)
+
+        events = await list_events(storage_path=temp_event_dir, session_id="target_session")
+
+        assert len(events) == 1
+        assert events[0].session_id == "target_session"
 
     @pytest.mark.asyncio
     async def test_clear_events(self, temp_event_dir):

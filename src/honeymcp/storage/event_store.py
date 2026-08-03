@@ -46,6 +46,7 @@ async def list_events(
     storage_path: Optional[Path] = None,
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
+    session_id: Optional[str] = None,
 ) -> List[AttackFingerprint]:
     """Load events from storage with optional date filtering.
 
@@ -53,6 +54,7 @@ async def list_events(
         storage_path: Base directory for event storage
         start_date: Only include events on or after this date
         end_date: Only include events on or before this date
+        session_id: Only include events for this session
 
     Returns:
         List of attack fingerprints sorted by timestamp (newest first)
@@ -81,6 +83,8 @@ async def list_events(
                 async with aiofiles.open(json_file, "r") as f:
                     content = await f.read()
                     event = AttackFingerprint.model_validate_json(content)
+                    if session_id is not None and event.session_id != session_id:
+                        continue
                     events.append(event)
             except Exception as e:
                 print(f"Warning: Failed to load {json_file}: {e}")
