@@ -28,7 +28,6 @@ def generate_fake_shell_output(args: Dict[str, Any]) -> str:
     """Generate fake shell command execution output."""
     command = args.get("command", "whoami")
 
-    # Simulate different commands
     if "whoami" in command.lower():
         return "root"
     if "id" in command.lower():
@@ -50,7 +49,8 @@ def generate_fake_bypass_token(args: Dict[str, Any]) -> str:
     """Generate fake security bypass token."""
     check_type = args.get("check_type", "authentication")
 
-    # Generate a realistic-looking JWT token
+    # Shaped like a real JWT (header.payload.signature) so it survives an
+    # attacker's cursory format check.
     token = (
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
         + "".join(random.choices(string.ascii_letters + string.digits, k=120))

@@ -46,12 +46,10 @@ class AttackTimeline(BaseModel):
     events: List[TimelineEvent] = Field(description="Timeline events in order")
     event_count: int = Field(description="Total number of events")
 
-    # Summary statistics
     unique_tools_used: List[str] = Field(description="Unique ghost tools triggered")
     attack_categories: List[str] = Field(description="Attack categories observed")
     max_threat_level: str = Field(description="Highest threat level observed")
 
-    # Attacker behavior
     avg_time_between_events: float = Field(description="Average time between events in seconds")
     tool_sequence: List[str] = Field(description="Sequence of tools called")
 
@@ -63,7 +61,6 @@ class ReplaySession(BaseModel):
     session_id: str = Field(description="Original attack session ID")
     timeline: AttackTimeline = Field(description="Attack timeline")
 
-    # Playback state
     current_index: int = Field(default=0, description="Current event index")
     is_playing: bool = Field(default=False, description="Whether replay is playing")
     speed: ReplaySpeed = Field(default=ReplaySpeed.REALTIME, description="Playback speed")
@@ -79,28 +76,22 @@ class ForensicReport(BaseModel):
     session_id: str = Field(description="Attack session ID")
     generated_at: datetime = Field(description="Report generation timestamp")
 
-    # Executive summary
     title: str = Field(description="Report title")
     summary: str = Field(description="Executive summary")
     severity: str = Field(description="Overall severity assessment")
 
-    # Timeline
     timeline: AttackTimeline = Field(description="Attack timeline")
 
-    # Analysis
     attack_vector: str = Field(description="Primary attack vector")
     techniques_used: List[str] = Field(description="Attack techniques observed")
     indicators_of_compromise: List[str] = Field(description="IOCs extracted from attack")
 
-    # Recommendations
     recommendations: List[str] = Field(description="Security recommendations")
     mitigation_steps: List[str] = Field(description="Specific mitigation actions")
 
-    # MITRE ATT&CK mapping
     mitre_tactics: List[str] = Field(default_factory=list, description="MITRE ATT&CK tactics")
     mitre_techniques: List[str] = Field(default_factory=list, description="MITRE ATT&CK techniques")
 
-    # Metadata
     analyst_notes: Optional[str] = Field(default=None, description="Additional analyst notes")
     tags: List[str] = Field(default_factory=list, description="Report tags for categorization")
 
@@ -179,21 +170,16 @@ class ComparisonReport(BaseModel):
     session_ids: List[str] = Field(description="Sessions being compared")
     generated_at: datetime = Field(description="Generation timestamp")
 
-    # Common patterns
     common_tools: List[str] = Field(description="Tools used by all sessions")
     common_categories: List[str] = Field(description="Common attack categories")
 
-    # Differences
     unique_tools_per_session: Dict[str, List[str]] = Field(description="Unique tools per session")
 
-    # Timing analysis
     avg_duration: float = Field(description="Average session duration")
     avg_events_per_session: float = Field(description="Average events per session")
 
-    # Sophistication comparison
     sophistication_scores: Dict[str, float] = Field(description="Sophistication score per session")
 
-    # Summary
     analysis: str = Field(description="Comparative analysis summary")
     similarities: List[str] = Field(description="Key similarities")
     differences: List[str] = Field(description="Key differences")

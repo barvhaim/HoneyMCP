@@ -40,13 +40,10 @@ class AlertRulesEngine:
         self.config = config
         self.rules = {rule.rule_id: rule for rule in config.rules}
 
-        # Deduplication tracking
         self._recent_alerts: Dict[str, datetime] = {}
 
-        # Rate limiting tracking
         self._rate_limit_counts: Dict[str, List[datetime]] = defaultdict(list)
 
-        # Pending alerts queue
         self._pending_alerts: List[Alert] = []
 
         logger.info("Alert rules engine initialized with %d rules", len(self.rules))
@@ -96,23 +93,18 @@ class AlertRulesEngine:
             if not rule.enabled:
                 continue
 
-            # Check if rule matches this event type
             if "attack" not in rule.event_types:
                 continue
 
-            # Apply filters
             if not self._matches_attack_filters(event, rule):
                 continue
 
-            # Check rate limiting
             if not self._check_rate_limit(rule):
                 logger.debug("Rate limit exceeded for rule %s", rule.rule_id)
                 continue
 
-            # Create alert
             alert = self._create_attack_alert(event, rule)
 
-            # Check deduplication
             if rule.deduplicate and self._is_duplicate(alert, rule):
                 logger.debug("Duplicate alert suppressed for rule %s", rule.rule_id)
                 continue
@@ -143,23 +135,18 @@ class AlertRulesEngine:
             if not rule.enabled:
                 continue
 
-            # Check if rule matches pattern events
             if "pattern" not in rule.event_types:
                 continue
 
-            # Apply filters
             if not self._matches_pattern_filters(pattern, rule):
                 continue
 
-            # Check rate limiting
             if not self._check_rate_limit(rule):
                 logger.debug("Rate limit exceeded for rule %s", rule.rule_id)
                 continue
 
-            # Create alert
             alert = self._create_pattern_alert(pattern, rule)
 
-            # Check deduplication
             if rule.deduplicate and self._is_duplicate(alert, rule):
                 logger.debug("Duplicate alert suppressed for rule %s", rule.rule_id)
                 continue
@@ -183,7 +170,6 @@ class AlertRulesEngine:
         Returns:
             True if event matches all filters
         """
-        # Check threat level
         if rule.min_threat_level:
             threat_levels = ["low", "medium", "high", "critical"]
             min_index = threat_levels.index(rule.min_threat_level)
@@ -192,7 +178,6 @@ class AlertRulesEngine:
             if event_index < min_index:
                 return False
 
-        # Check attack categories
         if rule.attack_categories:
             if event.attack_category not in rule.attack_categories:
                 return False
@@ -213,12 +198,10 @@ class AlertRulesEngine:
         Returns:
             True if pattern matches all filters
         """
-        # Check pattern types
         if rule.pattern_types:
             if pattern.pattern_type not in rule.pattern_types:
                 return False
 
-        # Check confidence threshold
         if rule.min_confidence is not None:
             if pattern.confidence < rule.min_confidence:
                 return False
@@ -240,12 +223,10 @@ class AlertRulesEngine:
         now = datetime.utcnow()
         window_start = now - timedelta(seconds=rule.rate_limit_window_seconds)
 
-        # Clean old timestamps
         self._rate_limit_counts[rule.rule_id] = [
             ts for ts in self._rate_limit_counts[rule.rule_id] if ts > window_start
         ]
 
-        # Check count
         count = len(self._rate_limit_counts[rule.rule_id])
         return count < rule.rate_limit_count
 
@@ -259,7 +240,6 @@ class AlertRulesEngine:
         Returns:
             True if duplicate, False otherwise
         """
-        # Create deduplication key based on alert content
         dedup_key = f"{rule.rule_id}:{alert.title}"
 
         if dedup_key in self._recent_alerts:
@@ -280,12 +260,10 @@ class AlertRulesEngine:
         """
         now = datetime.utcnow()
 
-        # Track for deduplication
         if rule.deduplicate:
             dedup_key = f"{rule.rule_id}:{alert.title}"
             self._recent_alerts[dedup_key] = now
 
-        # Track for rate limiting
         if rule.rate_limit_count is not None:
             self._rate_limit_counts[rule.rule_id].append(now)
 
@@ -351,7 +329,6 @@ class AlertRulesEngine:
         Returns:
             Alert instance
         """
-        # Determine emoji based on pattern type
         emoji_map = {
             "coordinated": "🎯",
             "campaign": "📊",
@@ -413,18 +390,15 @@ class AlertRulesEngine:
         """
         cutoff = datetime.utcnow() - timedelta(hours=max_age_hours)
 
-        # Clean deduplication tracking
         old_keys = [key for key, timestamp in self._recent_alerts.items() if timestamp < cutoff]
         for key in old_keys:
             del self._recent_alerts[key]
 
-        # Clean rate limit tracking
         for rule_id in list(self._rate_limit_counts.keys()):
             self._rate_limit_counts[rule_id] = [
                 ts for ts in self._rate_limit_counts[rule_id] if ts > cutoff
             ]
 
-            # Remove empty entries
             if not self._rate_limit_counts[rule_id]:
                 del self._rate_limit_counts[rule_id]
 

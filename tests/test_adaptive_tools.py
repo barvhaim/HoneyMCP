@@ -141,11 +141,9 @@ class TestEffectivenessTracker:
         for event in sample_events:
             await effectiveness_tracker.record_trigger(event)
         
-        # list_secrets triggered twice
         metric = effectiveness_tracker.get_metric("list_secrets")
         assert metric.trigger_count == 2
-        
-        # execute_command triggered once
+
         metric = effectiveness_tracker.get_metric("execute_command")
         assert metric.trigger_count == 1
     
@@ -161,7 +159,6 @@ class TestEffectivenessTracker:
         
         metric = effectiveness_tracker.get_metric("list_secrets")
         
-        # Scores should be between 0 and 1
         assert 0.0 <= metric.attractiveness_score <= 1.0
         assert 0.0 <= metric.detection_score <= 1.0
         assert 0.0 <= metric.engagement_score <= 1.0
@@ -219,13 +216,11 @@ class TestCatalogOptimizer:
         sample_events: List[AttackFingerprint],
     ):
         """Test catalog analysis."""
-        # Record some events
         for event in sample_events:
             await effectiveness_tracker.record_trigger(event)
-        
-        # Analyze catalog
+
         recommendation = await catalog_optimizer.analyze_catalog(sample_tools)
-        
+
         assert recommendation.recommendation_id.startswith("rec_")
         assert isinstance(recommendation.tools_to_add, list)
         assert isinstance(recommendation.tools_to_remove, list)
@@ -240,11 +235,9 @@ class TestCatalogOptimizer:
         sample_events: List[AttackFingerprint],
     ):
         """Test balanced optimization strategy."""
-        # Record events
         for event in sample_events:
             await effectiveness_tracker.record_trigger(event)
-        
-        # Set balanced strategy
+
         catalog_optimizer.config.strategy = OptimizationStrategy.BALANCED
         
         recommendation = await catalog_optimizer.analyze_catalog(sample_tools)
@@ -271,15 +264,15 @@ class TestCatalogOptimizer:
         sample_tools: List[GhostToolSpec],
     ):
         """Test retrieving snapshots."""
-        # Create multiple snapshots
         await catalog_optimizer.create_snapshot(sample_tools)
+        # sleep so the two snapshots get distinct timestamps to order by
         await asyncio.sleep(0.1)
         await catalog_optimizer.create_snapshot(sample_tools)
-        
+
         snapshots = catalog_optimizer.get_snapshots(limit=2)
-        
+
         assert len(snapshots) == 2
-        # Should be sorted by timestamp (most recent first)
+        # most recent first
         assert snapshots[0].timestamp >= snapshots[1].timestamp
     
     @pytest.mark.asyncio
@@ -333,7 +326,7 @@ class TestAttackerProfiler:
         
         profile = await attacker_profiler.analyze_session(session_id, sample_events)
         
-        # Should have some sophistication due to multiple tools and high threat
+        # multiple distinct tools plus high/critical threat levels floor this above 0
         assert profile.sophistication_score > 0.0
     
     @pytest.mark.asyncio
@@ -348,8 +341,8 @@ class TestAttackerProfiler:
         profile = await attacker_profiler.analyze_session(session_id, sample_events)
         
         assert len(profile.recommended_tools) > 0
-        # Should recommend tools based on observed categories
-        assert any("credential" in tool.lower() or "execute" in tool.lower() 
+        # recommendations derive from the observed categories (credential_access, rce)
+        assert any("credential" in tool.lower() or "execute" in tool.lower()
                   for tool in profile.recommended_tools)
     
     @pytest.mark.asyncio
@@ -361,10 +354,9 @@ class TestAttackerProfiler:
         """Test generation hint creation."""
         session_id = sample_events[0].session_id
         
-        # First analyze session
+        # generate_hint requires the session to have been profiled first
         await attacker_profiler.analyze_session(session_id, sample_events)
-        
-        # Then generate hint
+
         hint = await attacker_profiler.generate_hint(session_id)
         
         assert hint is not None
@@ -381,7 +373,6 @@ class TestAttackerProfiler:
         sample_events: List[AttackFingerprint],
     ):
         """Test profile comparison."""
-        # Create two profiles
         session1 = "session_1"
         session2 = "session_2"
         
@@ -400,7 +391,7 @@ class TestAttackerProfiler:
         
         assert "similarity_score" in comparison
         assert 0.0 <= comparison["similarity_score"] <= 1.0
-        # Same events should have high similarity
+        # both profiles were built from the same event list, so similarity must be high
         assert comparison["similarity_score"] > 0.5
     
     @pytest.mark.asyncio
@@ -410,7 +401,7 @@ class TestAttackerProfiler:
         sample_events: List[AttackFingerprint],
     ):
         """Test campaign identification."""
-        # Create similar profiles
+        # three sessions built from identical events cluster into one campaign
         for i in range(3):
             session_id = f"session_{i}"
             events = [e for e in sample_events]
@@ -420,8 +411,7 @@ class TestAttackerProfiler:
             await attacker_profiler.analyze_session(session_id, events)
         
         campaigns = await attacker_profiler.identify_campaigns()
-        
-        # Should identify at least one campaign
+
         assert len(campaigns) > 0
         assert campaigns[0]["session_count"] >= 2
     
@@ -458,31 +448,24 @@ class TestIntegration:
         """Test complete adaptive workflow."""
         session_id = sample_events[0].session_id
         
-        # 1. Record triggers
         for event in sample_events:
             await effectiveness_tracker.record_trigger(event)
-        
-        # 2. Get metrics
+
         metrics = effectiveness_tracker.get_all_metrics()
         assert len(metrics) > 0
-        
-        # 3. Analyze catalog
+
         recommendation = await catalog_optimizer.analyze_catalog(sample_tools)
         assert recommendation is not None
-        
-        # 4. Create snapshot
+
         snapshot = await catalog_optimizer.create_snapshot(sample_tools)
         assert snapshot is not None
-        
-        # 5. Profile attacker
+
         profile = await attacker_profiler.analyze_session(session_id, sample_events)
         assert profile is not None
-        
-        # 6. Generate hint
+
         hint = await attacker_profiler.generate_hint(session_id)
         assert hint is not None
-        
-        # 7. Get statistics
+
         tracker_stats = await effectiveness_tracker.get_statistics()
         profiler_stats = await attacker_profiler.get_statistics()
         
@@ -498,18 +481,15 @@ class TestIntegration:
         sample_tools: List[GhostToolSpec],
     ):
         """Test that optimization can improve catalog."""
-        # Record events for some tools
-        for event in sample_events[:2]:  # Only first 2 events
+        # only trigger the first 2 tools, leaving low_performing_tool with zero triggers
+        for event in sample_events[:2]:
             await effectiveness_tracker.record_trigger(event)
-        
-        # Create initial snapshot
+
         snapshot1 = await catalog_optimizer.create_snapshot(sample_tools)
-        
-        # Get recommendation
+
         recommendation = await catalog_optimizer.analyze_catalog(sample_tools)
-        
-        # If there are tools to remove, it should be the low-performing one
+
+        # the untriggered tool is the expected removal candidate
         if recommendation.tools_to_remove:
-            # The tool with no triggers should be recommended for removal
             assert "low_performing_tool" in recommendation.tools_to_remove or \
                    len(recommendation.tools_to_remove) > 0

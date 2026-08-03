@@ -76,7 +76,6 @@ class NotifierBase(ABC):
                     )
                     return True
 
-                # Failed, will retry
                 attempt += 1
                 if attempt < self.max_retries:
                     delay = self.retry_delay * (self.backoff_multiplier**attempt)
@@ -97,7 +96,6 @@ class NotifierBase(ABC):
                     delay = self.retry_delay * (self.backoff_multiplier**attempt)
                     await asyncio.sleep(delay)
 
-        # All retries exhausted
         alert.delivery_status[channel] = "failed"
         logger.error(
             "Alert %s failed via %s after %d attempts", alert.alert_id, channel, self.max_retries
@@ -129,7 +127,6 @@ class SlackNotifier(NotifierBase):
             logger.error("Slack webhook URL not configured")
             return False
 
-        # Map severity to Slack colors
         color_map = {
             "info": "#36a64f",  # Green
             "warning": "#ff9900",  # Orange
@@ -137,7 +134,6 @@ class SlackNotifier(NotifierBase):
             "critical": "#8b0000",  # Dark red
         }
 
-        # Build Slack message
         payload = {
             "username": "HoneyMCP Security",
             "icon_emoji": ":shield:",
@@ -156,7 +152,6 @@ class SlackNotifier(NotifierBase):
             ],
         }
 
-        # Add event/pattern links if available
         if alert.event_id:
             payload["attachments"][0]["fields"].append(
                 {"title": "Event ID", "value": alert.event_id, "short": True}
@@ -167,7 +162,6 @@ class SlackNotifier(NotifierBase):
                 {"title": "Pattern ID", "value": alert.pattern_id, "short": True}
             )
 
-        # Override channel if specified
         if self.config.slack_channel:
             payload["channel"] = self.config.slack_channel
 
@@ -212,7 +206,6 @@ class PagerDutyNotifier(NotifierBase):
             logger.error("PagerDuty routing key not configured")
             return False
 
-        # Map severity to PagerDuty severity
         severity_map = {
             "info": "info",
             "warning": "warning",
@@ -220,7 +213,6 @@ class PagerDutyNotifier(NotifierBase):
             "critical": "critical",
         }
 
-        # Build PagerDuty event
         payload = {
             "routing_key": self.config.pagerduty_routing_key,
             "event_action": "trigger",
@@ -239,7 +231,6 @@ class PagerDutyNotifier(NotifierBase):
             },
         }
 
-        # Add links if available
         if alert.event_id or alert.pattern_id:
             payload["payload"]["custom_details"]["links"] = []
             if alert.event_id:
@@ -293,14 +284,12 @@ class EmailNotifier(NotifierBase):
             return False
 
         try:
-            # Create message
             msg = MIMEMultipart("alternative")
             msg["Subject"] = f"[{alert.severity.value.upper()}] {alert.title}"
             msg["From"] = self.config.smtp_from
             msg["To"] = ", ".join(self.config.smtp_to)
             msg["Date"] = alert.timestamp.strftime("%a, %d %b %Y %H:%M:%S +0000")
 
-            # Plain text version
             text_body = f"""
 HoneyMCP Security Alert
 
@@ -315,7 +304,6 @@ Severity: {alert.severity.value.upper()}
 Time: {alert.timestamp.isoformat()}
 """
 
-            # HTML version
             html_body = f"""
 <html>
 <head>
@@ -348,7 +336,6 @@ Time: {alert.timestamp.isoformat()}
 </html>
 """
 
-            # Attach both versions
             msg.attach(MIMEText(text_body, "plain"))
             msg.attach(MIMEText(html_body, "html"))
 
@@ -395,7 +382,6 @@ class WebhookNotifier(NotifierBase):
             logger.error("No webhook URLs configured")
             return False
 
-        # Build webhook payload
         payload = {
             "alert_id": alert.alert_id,
             "rule_id": alert.rule_id,
@@ -475,7 +461,6 @@ class NotificationManager:
         """
         self.config = config
 
-        # Initialize notifiers
         self.notifiers = {
             AlertChannel.SLACK: SlackNotifier(config),
             AlertChannel.PAGERDUTY: PagerDutyNotifier(config),

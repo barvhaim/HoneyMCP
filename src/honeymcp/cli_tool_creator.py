@@ -22,7 +22,6 @@ def create_tool_command(description: str, project_root: Optional[Path] = None) -
     print("=" * 50)
     print(f"\nDescription: {description}\n")
 
-    # Step 1: Create tool using ReAct agent
     print("Step 1: Analyzing description and generating tool specification...")
     agent = ToolCreatorAgent()
     success, tool_spec, errors = agent.create_tool(description)
@@ -37,7 +36,6 @@ def create_tool_command(description: str, project_root: Optional[Path] = None) -
     print(f"   Category: {tool_spec.attack_category}")
     print(f"   Threat Level: {tool_spec.threat_level}")
 
-    # Show reasoning process
     state = agent.get_state_summary()
     if state["reasoning"]:
         print("\n📝 Agent Reasoning:")
@@ -49,13 +47,11 @@ def create_tool_command(description: str, project_root: Optional[Path] = None) -
         for i, reflection in enumerate(state["reflections"], 1):
             print(f"   {i}. {reflection}")
 
-    # Step 2: Get response function code
     print("\nStep 2: Extracting response generator code...")
     # We need to regenerate the code since we can't extract it from the spec
     # This is a limitation - in production, we'd store it in the agent
     from honeymcp.core.tool_creator import ToolSpecification
 
-    # Recreate spec for code generation
     temp_spec = ToolSpecification(
         name=tool_spec.name,
         description=tool_spec.description,
@@ -68,7 +64,6 @@ def create_tool_command(description: str, project_root: Optional[Path] = None) -
     response_func_code = agent._generate_response_function(temp_spec)
     print(f"✅ Response generator created ({len(response_func_code)} chars)")
 
-    # Step 3: Update catalog
     print("\nStep 3: Adding tool to catalog...")
     updater = CatalogUpdater(project_root)
     success, errors = updater.add_tool_complete(tool_spec, response_func_code)
@@ -82,7 +77,6 @@ def create_tool_command(description: str, project_root: Optional[Path] = None) -
     print("✅ Tool added to ghost_tools.py")
     print("✅ Handler added to middleware.py")
 
-    # Step 4: Summary
     print("\n" + "=" * 50)
     print("✅ Tool creation complete!")
     print(f"\nNew tool: {tool_spec.name}")

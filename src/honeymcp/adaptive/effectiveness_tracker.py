@@ -41,7 +41,6 @@ class EffectivenessTracker:
         tool_name = event.ghost_tool_called
         session_id = event.session_id
 
-        # Initialize metric if needed
         if tool_name not in self._metrics:
             self._metrics[tool_name] = ToolEffectivenessMetric(
                 tool_name=tool_name,
@@ -51,22 +50,18 @@ class EffectivenessTracker:
 
         metric = self._metrics[tool_name]
 
-        # Update trigger count
         metric.trigger_count += 1
         metric.last_triggered = event.timestamp
 
-        # Track unique sessions
         if tool_name not in self._session_tools[session_id]:
             self._session_tools[session_id].add(tool_name)
             metric.unique_sessions = len(
                 [sid for sid, tools in self._session_tools.items() if tool_name in tools]
             )
 
-        # Track session start time
         if session_id not in self._session_start_times:
             self._session_start_times[session_id] = event.timestamp
 
-        # Update time to trigger
         time_to_trigger = (event.timestamp - self._session_start_times[session_id]).total_seconds()
         if metric.trigger_count == 1:
             metric.avg_time_to_trigger = time_to_trigger
@@ -76,14 +71,11 @@ class EffectivenessTracker:
                 metric.avg_time_to_trigger * (metric.trigger_count - 1) + time_to_trigger
             ) / metric.trigger_count
 
-        # Track high threat triggers
         if event.threat_level in ["high", "critical"]:
             metric.high_threat_triggers += 1
 
-        # Update timestamp
         metric.last_updated = datetime.utcnow()
 
-        # Recalculate scores
         await self._calculate_scores(metric)
 
         logger.debug(
@@ -109,7 +101,7 @@ class EffectivenessTracker:
             # Score based on triggers per day (cap at 10 for normalization)
             metric.attractiveness_score = min(1.0, triggers_per_day / 10.0)
 
-            # Boost for unique sessions
+            # Up to +0.2 for breadth across distinct sessions
             if metric.unique_sessions > 1:
                 session_boost = min(0.2, metric.unique_sessions * 0.05)
                 metric.attractiveness_score = min(1.0, metric.attractiveness_score + session_boost)
@@ -318,7 +310,6 @@ class EffectivenessTracker:
         total_triggers = sum(m.trigger_count for m in self._metrics.values())
         avg_score = sum(m.overall_score for m in self._metrics.values()) / len(self._metrics)
 
-        # Find best and worst
         best_tool = max(self._metrics.values(), key=lambda m: m.overall_score)
         worst_tool = min(self._metrics.values(), key=lambda m: m.overall_score)
 

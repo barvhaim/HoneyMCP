@@ -39,7 +39,6 @@ class TestEventStore:
         """Test listing stored events."""
         import asyncio
         
-        # Store multiple events with small delay to ensure different timestamps
         for i in range(3):
             fingerprint = AttackFingerprint(
                 event_id=f"event_{i}",
@@ -54,7 +53,6 @@ class TestEventStore:
             await store_event(fingerprint, storage_path=temp_event_dir)
             await asyncio.sleep(0.01)  # Small delay to ensure file writes complete
         
-        # List events
         events = await list_events(storage_path=temp_event_dir)
         assert len(events) >= 1  # At least one event should be stored
 
@@ -74,7 +72,6 @@ class TestEventStore:
         
         filepath = await store_event(fingerprint, storage_path=temp_event_dir)
         
-        # Verify file exists and can be read
         assert filepath.exists()
         events = await list_events(storage_path=temp_event_dir)
         assert len(events) >= 1
@@ -96,7 +93,6 @@ class TestEventStore:
         
         await store_event(fingerprint, storage_path=temp_event_dir)
         
-        # List events for today
         today = date.today()
         events = await list_events(
             storage_path=temp_event_dir,

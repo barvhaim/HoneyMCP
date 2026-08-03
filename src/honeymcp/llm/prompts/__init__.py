@@ -27,12 +27,9 @@ def get_prompts(prompt_file: str | None = None) -> Dict[str, Any]:
 
     prompts: Dict[str, Any] = {}
 
-    # Get the directory where this file is located
     current_dir = os.path.dirname(__file__)
 
-    # If a specific prompt file is requested, load only that file
     if prompt_file:
-        # Add .yaml extension if not present
         if not prompt_file.endswith(".yaml"):
             prompt_file = f"{prompt_file}.yaml"
 
@@ -49,7 +46,6 @@ def get_prompts(prompt_file: str | None = None) -> Dict[str, Any]:
         _PROMPT_CACHE[cache_key] = dict(prompts)
         return dict(prompts)
 
-    # Otherwise, load all YAML files in the prompts directory
     yaml_pattern = os.path.join(current_dir, "*.yaml")
     yaml_files = glob.glob(yaml_pattern)
 

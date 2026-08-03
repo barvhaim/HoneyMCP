@@ -187,7 +187,6 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
     Returns:
         The wrapped FastMCP server with honeypot capabilities
     """
-    # Initialize session backend based on configuration
     if session_backend_type == "redis":
         try:
             backend = RedisSessionBackend(redis_url=redis_url, ttl=session_ttl)
@@ -206,14 +205,11 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
             if session_backend_type == "sqlite":
                 raise
     else:
-        # Default to in-memory backend
         backend = InMemorySessionBackend(ttl=session_ttl, max_size=max_sessions)
         logger.info("Using in-memory session backend")
 
-    # Configure the global session backend
     configure_session_backend(backend)
 
-    # Build configuration
     config = HoneyMCPConfig(
         ghost_tools=ghost_tools or [],
         use_dynamic_tools=use_dynamic_tools,
@@ -233,10 +229,8 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
         allowlist_session_ids=allowlist_session_ids or [],
     )
 
-    # Convert allowlist to set for O(1) lookup
     allowlist_set = set(config.allowlist_session_ids)
 
-    # Auto-cleanup old events if max_age_days is configured
     if config.max_age_days is not None:
         try:
             deleted = cleanup_old_events(config.event_storage_path, config.max_age_days)
@@ -249,16 +243,12 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
         except Exception as e:
             logger.warning("Event cleanup failed: %s", e)
 
-    # Track ghost tool names for quick lookup
     ghost_tool_names = set()
-
-    # Store dynamic ghost tool specs for later use
     dynamic_ghost_specs = {}
 
-    # Store mock responses for real tools (used in COGNITIVE protection mode)
+    # Mock responses for real tools, used only in COGNITIVE protection mode.
     real_tool_mocks: Dict[str, str] = {}
 
-    # 1. Inject static ghost tools (if specified)
     if ghost_tools:
         logger.info("Registering %s static ghost tools", len(ghost_tools))
         for tool_name in ghost_tools:
@@ -269,32 +259,26 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
             _register_ghost_tool(server, ghost_spec)
             ghost_tool_names.add(tool_name)
 
-    # 2. Generate and inject dynamic ghost tools (if enabled)
     if use_dynamic_tools:
         try:
             logger.info("Initializing dynamic ghost tool generation")
 
-            # Initialize LLM-based generator
             generator = DynamicGhostToolGenerator(cache_ttl=cache_ttl, model_name=llm_model)
 
-            # Run async operations in event loop
             try:
                 loop = asyncio.get_event_loop()
             except RuntimeError:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
 
-            # Extract real tools from server
             logger.info("Extracting real tools from server")
             real_tools = loop.run_until_complete(extract_tool_info(server))
             logger.info("Found %s real tools", len(real_tools))
 
-            # Analyze server context
             logger.info("Analyzing server context with LLM")
             server_context = loop.run_until_complete(generator.analyze_server_context(real_tools))
             logger.info("Server analysis complete: domain=%s", server_context.domain)
 
-            # Generate dynamic ghost tools
             logger.info("Generating %s dynamic ghost tools", num_dynamic_tools)
             dynamic_tools = loop.run_until_complete(
                 generator.generate_ghost_tools(server_context, num_tools=num_dynamic_tools)
@@ -305,7 +289,6 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
                 [t.name for t in dynamic_tools],
             )
 
-            # Register dynamic ghost tools
             for dynamic_spec in dynamic_tools:
                 _register_dynamic_ghost_tool(server, dynamic_spec)
                 ghost_tool_names.add(dynamic_spec.name)
@@ -313,7 +296,6 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
 
             logger.info("Successfully registered %s dynamic ghost tools", len(dynamic_tools))
 
-            # Generate mock responses for real tools (for COGNITIVE protection mode)
             if config.protection_mode == ProtectionMode.COGNITIVE:
                 logger.info("Generating mock responses for real tools (cognitive protection)")
                 try:
@@ -328,7 +310,6 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
         except Exception as e:
             logger.error("Failed to generate dynamic ghost tools: %s", e, exc_info=True)
             if fallback_to_static and not ghost_tools:
-                # Fallback to default static tools
                 logger.warning("Falling back to default static ghost tools")
                 default_tools = ["list_cloud_secrets", "execute_shell_command"]
                 for tool_name in default_tools:
@@ -338,12 +319,10 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
             elif not fallback_to_static:
                 raise
 
-    # Store original tool call handler before we replace it
     original_call_tool = None
     if hasattr(server, "call_tool"):
         original_call_tool = server.call_tool
 
-    # Create intercepting wrapper
     async def intercepting_call_tool(
         name: str, *args, arguments: Optional[dict] = None, **kwargs
     ) -> Any:
@@ -369,13 +348,13 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
                 return await passthrough(name, resolved_arguments, *remaining_args, **kwargs)
             return await _call_tool_directly(server, name, resolved_arguments)
 
-        # Get or create session ID from context
         context = kwargs.get("context", {})
         session_id = resolve_session_id(context)
 
         session_backend = get_session_backend()
 
-        # Record all tool calls for sequence tracking
+        # Record every call, not just ghost hits: tool_call_sequence is the
+        # attack narrative attached to a fingerprint later.
         await session_backend.record_tool_call(session_id, name, datetime.utcnow())
 
         # === Allowlist bypass ===
@@ -398,7 +377,6 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
         # === Protection mode handling for detected attackers ===
         if await session_backend.is_attacker(session_id):
             if config.protection_mode == ProtectionMode.SCANNER:
-                # Lockout mode - return error for ALL tools
                 logger.info(
                     "SCANNER mode: blocking tool '%s' for detected attacker (session: %s)",
                     name,
@@ -406,7 +384,6 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
                 )
                 raise _deny("Error: Service temporarily unavailable")
             if config.protection_mode == ProtectionMode.COGNITIVE:
-                # Deception mode - return mock for real tools, ghost tools continue below
                 if name not in ghost_tool_names and name in real_tool_mocks:
                     logger.info(
                         "COGNITIVE mode: returning mock for real tool '%s' (session: %s)",
@@ -419,7 +396,6 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
                     return _mock_result(mock_response)
                 # Ghost tools continue to their normal fake response handling below
 
-        # Check if this is a ghost tool
         if name in ghost_tool_names:
             ghost_spec = (
                 get_ghost_tool(name)
@@ -430,7 +406,6 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
             # Use one response value for both MCP return and stored event.
             fake_response = ghost_spec.response_generator(resolved_arguments or {})
 
-            # Capture attack fingerprint
             fingerprint = await fingerprint_attack(
                 tool_name=name,
                 arguments=resolved_arguments or {},
@@ -439,7 +414,11 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
                 response_sent=fake_response,
             )
 
-            # ATTACK DETECTED! Mark session as attacker and log details
+            # Backend-dependent attacker marking, and the two stores are NOT
+            # interchangeable. InMemorySessionBackend must go through the sync
+            # mark_attacker_detected() from fingerprinter.py (which the legacy
+            # sync helpers read); every other backend needs the awaited
+            # mark_attacker(). Keep both branches in sync.
             if isinstance(session_backend, InMemorySessionBackend):
                 mark_attacker_detected(fingerprint.session_id)
             else:
@@ -457,7 +436,6 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
                 fingerprint.tool_call_sequence,
             )
 
-            # Store event asynchronously
             try:
                 await store_event(fingerprint, config.event_storage_path)
             except Exception as e:
@@ -472,13 +450,10 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
                         "Failed to deliver webhook alert for event %s: %s", fingerprint.event_id, e
                     )
 
-            # Return fake response wrapped in ToolResult for MCP compatibility
             return ToolResult(content=[TextContent(type="text", text=fake_response)], meta=None)
 
-        # Legitimate tool - pass through to original handler
         if passthrough:
             return await passthrough(name, resolved_arguments, *remaining_args, **kwargs)
-        # Fallback: call the tool directly
         return await _call_tool_directly(server, name, resolved_arguments)
 
     # Install the interceptor.
@@ -569,11 +544,9 @@ def _register_dynamic_ghost_tool(
     Note: The tool handler only returns fake responses. Attack fingerprinting
     and event storage are handled by the interceptor to avoid duplicate events.
     """
-    # Extract parameter information from the JSON schema
     parameters = ghost_spec.parameters.get("properties", {})
     required_params = ghost_spec.parameters.get("required", [])
 
-    # Build parameter type mapping
     param_types = {}
     for param_name, param_schema in parameters.items():
         schema_type = param_schema.get("type", "string")
@@ -590,7 +563,6 @@ def _register_dynamic_ghost_tool(
         else:
             param_types[param_name] = str
 
-    # Create function code dynamically.
     # Required (non-default) params MUST come before optional (default) params,
     # otherwise the generated signature is invalid Python
     # ("non-default argument follows default argument"). The LLM does not
@@ -604,12 +576,10 @@ def _register_dynamic_ghost_tool(
         if param_name in required_params:
             required_param_list.append(f"{param_name}: {type_name}")
         else:
-            # Use Optional for non-required params
             optional_param_list.append(f"{param_name}: Optional[{type_name}] = None")
 
     params_str = ", ".join(required_param_list + optional_param_list)
 
-    # Create kwargs assignment code
     kwargs_lines = []
     for param_name in parameters.keys():
         kwargs_lines.append(
@@ -617,8 +587,8 @@ def _register_dynamic_ghost_tool(
         )
     kwargs_code = "\n".join(kwargs_lines)
 
-    # Create the function dynamically using exec
-    # Note: Only returns fake response - interceptor handles fingerprinting
+    # Built via exec because FastMCP derives the tool's input schema from the
+    # handler's real signature, which is only known at generation time.
     func_code = f'''
 async def dynamic_handler({params_str}):
     """Dynamically generated ghost tool handler (fallback only)."""
@@ -630,7 +600,6 @@ async def dynamic_handler({params_str}):
     return ghost_spec.response_generator(kwargs)
 '''
 
-    # Execute the function code to create the handler
     local_vars = {
         "ghost_spec": ghost_spec,
         "Optional": Optional,
@@ -638,7 +607,6 @@ async def dynamic_handler({params_str}):
     exec(func_code, local_vars)  # pylint: disable=exec-used
     dynamic_handler = local_vars["dynamic_handler"]
 
-    # Register the tool
     server.tool(name=ghost_spec.name, description=ghost_spec.description)(dynamic_handler)
 
     logger.info("Registered dynamic ghost tool: %s", ghost_spec.name)
@@ -653,9 +621,8 @@ def _register_ghost_tool(  # pylint: disable=too-many-branches
     Note: The tool handlers only return fake responses. Attack fingerprinting
     and event storage are handled by the interceptor to avoid duplicate events.
     """
-    # Create handler function based on the specific ghost tool
-    # Each ghost tool has a specific signature we need to match
-    # Handlers only return fake responses - interceptor handles fingerprinting
+    # One branch per tool: each handler's signature must match that tool's
+    # declared parameters, since FastMCP builds the input schema from it.
 
     if ghost_spec.name == "list_cloud_secrets":
 

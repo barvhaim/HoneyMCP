@@ -46,27 +46,21 @@ class AttackerProfiler:
         Returns:
             Attacker profile
         """
-        # Store events
         self._session_events[session_id] = events
 
-        # Extract behavior patterns
         tool_preferences = self._extract_tool_preferences(events)
         attack_sequence = self._extract_attack_sequence(events)
         timing_pattern = self._analyze_timing_pattern(events)
 
-        # Calculate sophistication
         sophistication_score = self._calculate_sophistication(events)
         tool_diversity = len(set(e.ghost_tool_called for e in events))
         uses_automation = self._detect_automation(events)
 
-        # Generate recommendations
         recommended_tools = await self._recommend_tools(events)
         bait_chain = await self._generate_bait_chain(events)
 
-        # Calculate confidence
         confidence = min(1.0, len(events) / 10.0)  # More events = higher confidence
 
-        # Create or update profile
         profile = AttackerProfile(
             session_id=session_id,
             tool_preferences=tool_preferences,
@@ -120,7 +114,6 @@ class AttackerProfiler:
         Returns:
             List of tools in order used
         """
-        # Return unique tools in order of first use
         seen = set()
         sequence = []
         for event in events:
@@ -145,7 +138,6 @@ class AttackerProfiler:
         if len(events) < 2:
             return "unknown"
 
-        # Calculate time between events
         intervals = []
         for i in range(1, len(events)):
             delta = (events[i].timestamp - events[i - 1].timestamp).total_seconds()
@@ -153,7 +145,6 @@ class AttackerProfiler:
 
         avg_interval = sum(intervals) / len(intervals)
 
-        # Classify pattern
         if avg_interval < 5:
             return "rapid"
         elif avg_interval < 30:
@@ -210,7 +201,7 @@ class AttackerProfiler:
         if len(events) < 3:
             return False
 
-        # Check for very consistent timing (indicator of automation)
+        # Very consistent timing is the automation signal
         intervals = []
         for i in range(1, len(events)):
             delta = (events[i].timestamp - events[i - 1].timestamp).total_seconds()
@@ -219,7 +210,6 @@ class AttackerProfiler:
         if not intervals:
             return False
 
-        # Calculate variance
         avg = sum(intervals) / len(intervals)
         variance = sum((x - avg) ** 2 for x in intervals) / len(intervals)
 
@@ -240,11 +230,9 @@ class AttackerProfiler:
         """
         recommendations = []
 
-        # Analyze attack categories
         categories = [e.attack_category for e in events]
         category_counts = Counter(categories)
 
-        # Recommend tools based on observed categories
         category_tool_map = {
             "credential_access": ["get_api_keys", "list_passwords", "dump_credentials"],
             "rce": ["execute_shell", "run_script", "spawn_process"],
@@ -257,7 +245,6 @@ class AttackerProfiler:
             if category in category_tool_map:
                 recommendations.extend(category_tool_map[category])
 
-        # Return unique recommendations
         return list(set(recommendations))[:5]
 
     async def _generate_bait_chain(
@@ -275,21 +262,18 @@ class AttackerProfiler:
         if not events:
             return []
 
-        # Start with tools similar to what they've used
         used_tools = [e.ghost_tool_called for e in events]
 
-        # Create progression: discovery -> access -> exploitation
+        # Progression: discovery -> access -> exploitation, always ending on a
+        # high-value target to draw the attacker one step deeper.
         bait_chain = []
 
-        # If they've done discovery, offer access tools
         if any("list" in tool or "enumerate" in tool for tool in used_tools):
             bait_chain.append("access_database")
 
-        # If they've accessed data, offer exploitation tools
         if any("read" in tool or "get" in tool for tool in used_tools):
             bait_chain.append("execute_query")
 
-        # Always end with high-value target
         bait_chain.append("admin_panel")
 
         return bait_chain
@@ -314,7 +298,6 @@ class AttackerProfiler:
         if not events:
             return None
 
-        # Determine suggested tool types
         suggested_types = []
         if profile.sophistication_score > 0.7:
             suggested_types.extend(["advanced", "technical", "privileged"])
@@ -323,7 +306,6 @@ class AttackerProfiler:
         else:
             suggested_types.extend(["basic", "obvious"])
 
-        # Determine suggested categories
         category_counts = Counter(e.attack_category for e in events)
         suggested_categories = [cat for cat, _ in category_counts.most_common(3)]
 
@@ -390,24 +372,21 @@ class AttackerProfiler:
         if not profile1 or not profile2:
             return {"error": "One or both profiles not found"}
 
-        # Find common tools
         common_tools = set(profile1.tool_preferences) & set(profile2.tool_preferences)
 
-        # Compare sophistication
         sophistication_diff = abs(profile1.sophistication_score - profile2.sophistication_score)
 
-        # Determine if likely same attacker
+        # Similarity weights: 0.2 per shared tool, 0.3 for close sophistication
+        # (within 0.2), 0.2 for a matching timing pattern. Capped at 1.0, and
+        # > 0.6 is treated as "likely same attacker" below.
         similarity_score = 0.0
 
-        # Common tools increase similarity
         if common_tools:
             similarity_score += len(common_tools) * 0.2
 
-        # Similar sophistication increases similarity
         if sophistication_diff < 0.2:
             similarity_score += 0.3
 
-        # Same timing pattern increases similarity
         if profile1.timing_pattern == profile2.timing_pattern:
             similarity_score += 0.2
 
@@ -432,7 +411,6 @@ class AttackerProfiler:
         campaigns = []
         processed = set()
 
-        # Compare all profile pairs
         session_ids = list(self._profiles.keys())
 
         for i, session1 in enumerate(session_ids):
@@ -452,7 +430,6 @@ class AttackerProfiler:
                     processed.add(session2)
 
             if len(campaign_sessions) > 1:
-                # Found a campaign
                 profile1 = self._profiles[session1]
                 campaigns.append(
                     {

@@ -72,16 +72,16 @@ class TestCoordinatedAttackDetection:
         ]
         
         patterns = await detector.detect_coordinated_attacks(events)
-        
-        # Should not detect coordination across different time buckets
+
+        # hours apart, so the events land in different time buckets
         assert len(patterns) == 0
 
     @pytest.mark.asyncio
     async def test_coordination_threshold(self):
         """Test that coordination threshold is respected."""
         detector = PatternDetector(coordinated_threshold=5)
-        
-        # Create only 3 sessions (below threshold)
+
+        # only 3 sessions against a threshold of 5
         base_time = datetime.utcnow()
         events = [
             create_test_event("evt1", "sess1", "list_cloud_secrets", timestamp=base_time),
@@ -90,8 +90,7 @@ class TestCoordinatedAttackDetection:
         ]
         
         patterns = await detector.detect_coordinated_attacks(events)
-        
-        # Should not detect coordination (below threshold)
+
         assert len(patterns) == 0
 
     @pytest.mark.asyncio
@@ -172,8 +171,7 @@ class TestCampaignDetection:
             )
         
         patterns = await detector.detect_attack_campaigns(events)
-        
-        # Should not detect campaign (too short)
+
         assert len(patterns) == 0
 
     @pytest.mark.asyncio
@@ -198,8 +196,7 @@ class TestCampaignDetection:
             )
         
         patterns = await detector.detect_attack_campaigns(events)
-        
-        # Should not detect campaign (too few events)
+
         assert len(patterns) == 0
 
     @pytest.mark.asyncio
@@ -240,9 +237,8 @@ class TestAnomalyDetection:
         """Test basic anomaly detection."""
         detector = PatternDetector()
         
-        # Create events with one tool used much more than others
         events = []
-        
+
         # Tool A used 50 times (anomalous)
         for i in range(50):
             events.append(create_test_event(f"evt_a{i}", f"sess{i}", "tool_a"))
@@ -256,8 +252,7 @@ class TestAnomalyDetection:
             events.append(create_test_event(f"evt_c{i}", f"sess{i+55}", "tool_c"))
         
         patterns = await detector.detect_anomalies(events)
-        
-        # Should detect tool_a as anomalous
+
         assert len(patterns) >= 1
         anomaly = next(p for p in patterns if "tool_a" in p.characteristics["tool"])
         assert anomaly.pattern_type == "anomaly"
@@ -268,7 +263,7 @@ class TestAnomalyDetection:
         """Test that uniform distribution doesn't trigger anomalies."""
         detector = PatternDetector()
         
-        # Create events with uniform tool usage
+        # 40 events spread evenly across 4 tools leaves no outlier to flag
         tools = ["tool_a", "tool_b", "tool_c", "tool_d"]
         events = []
         
@@ -282,23 +277,21 @@ class TestAnomalyDetection:
             )
         
         patterns = await detector.detect_anomalies(events)
-        
-        # Should not detect anomalies (uniform distribution)
+
         assert len(patterns) == 0
 
     @pytest.mark.asyncio
     async def test_anomaly_insufficient_data(self):
         """Test that anomaly detection requires sufficient data."""
         detector = PatternDetector()
-        
-        # Create only 5 events (below threshold)
+
+        # 5 events is below the detector's minimum sample size
         events = []
         for i in range(5):
             events.append(create_test_event(f"evt{i}", f"sess{i}", "tool_a"))
-        
+
         patterns = await detector.detect_anomalies(events)
-        
-        # Should not detect anomalies (insufficient data)
+
         assert len(patterns) == 0
 
 
@@ -310,7 +303,6 @@ class TestAttackerProfiling:
         """Test basic attacker profile building."""
         detector = PatternDetector()
         
-        # Create events for a single session
         base_time = datetime.utcnow() - timedelta(hours=2)
         events = []
         tools = ["list_cloud_secrets", "execute_shell_command", "dump_database_credentials"]
@@ -396,9 +388,9 @@ class TestAttackerProfiling:
         base_time = datetime.utcnow() - timedelta(hours=2)
         events = []
         
-        # Create specific tool sequence
+        # list_cloud_secrets appears twice per cycle, making it the most-used tool
         tool_sequence = ["list_cloud_secrets", "execute_shell_command", "list_cloud_secrets"]
-        for i, tool in enumerate(tool_sequence * 3):  # Repeat 3 times
+        for i, tool in enumerate(tool_sequence * 3):
             events.append(
                 create_test_event(
                     f"evt{i}",
@@ -463,8 +455,7 @@ class TestAnalyzeAll:
         assert "coordinated" in results
         assert "campaigns" in results
         assert "anomalies" in results
-        
-        # Should detect at least one of each type
+
         assert len(results["coordinated"]) >= 1
         assert len(results["campaigns"]) >= 1
         assert len(results["anomalies"]) >= 1

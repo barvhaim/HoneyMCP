@@ -28,13 +28,10 @@ class EventStream:
         """
         self.max_history = max_history
 
-        # Event history buffer (for new clients)
         self._history: deque[StreamEvent] = deque(maxlen=max_history)
 
-        # Active client queues
         self._clients: Dict[str, asyncio.Queue] = {}
 
-        # Client filters
         self._client_filters: Dict[str, Dict[str, Any]] = {}
 
         logger.info("Event stream initialized with history size %d", max_history)
@@ -55,11 +52,9 @@ class EventStream:
         Yields:
             SSE-formatted event strings
         """
-        # Create queue for this client
         queue: asyncio.Queue = asyncio.Queue()
         self._clients[client_id] = queue
 
-        # Store filters
         self._client_filters[client_id] = {
             "event_types": event_types or [],
         }
@@ -71,7 +66,6 @@ class EventStream:
         try:
             sent_initial_event = False
 
-            # Send historical events if requested
             history_sent = False
             if send_history:
                 for event in self._history:
@@ -90,10 +84,8 @@ class EventStream:
                     "event_types": event_types or [],
                 }
 
-            # Stream new events
             while True:
                 try:
-                    # Wait for next event with timeout
                     event = await asyncio.wait_for(
                         queue.get(), timeout=30.0  # Send keepalive every 30s
                     )
@@ -104,7 +96,6 @@ class EventStream:
                     yield event.to_sse_format()
 
                 except asyncio.TimeoutError:
-                    # Send keepalive comment
                     yield ": keepalive\n\n"
 
         except asyncio.CancelledError:
@@ -112,7 +103,6 @@ class EventStream:
         except Exception as e:
             logger.error("Error in client %s stream: %s", client_id, str(e))
         finally:
-            # Cleanup
             self.unsubscribe(client_id)
 
     def unsubscribe(self, client_id: str) -> None:
@@ -140,10 +130,8 @@ class EventStream:
             data={
                 "event_id": event.event_id,
                 "session_id": event.session_id,
-                # "ghost_tool" is kept for backwards compatibility with existing
-                # consumers; "ghost_tool_called" matches the /events payload so
-                # dashboard rows render identically whether they arrive over SSE
-                # or from the initial /events fetch.
+                # "ghost_tool" retained for existing consumers; the remaining
+                # fields mirror /events so dashboard rows render identically.
                 "ghost_tool": event.ghost_tool_called,
                 "ghost_tool_called": event.ghost_tool_called,
                 "arguments": event.arguments,
@@ -196,10 +184,8 @@ class EventStream:
         Args:
             event: Stream event to publish
         """
-        # Add to history
         self._history.append(event)
 
-        # Send to all matching clients
         disconnected_clients = []
 
         for client_id, queue in list(self._clients.items()):
@@ -207,7 +193,6 @@ class EventStream:
                 continue
 
             try:
-                # Non-blocking put with timeout
                 await asyncio.wait_for(queue.put(event), timeout=1.0)
             except asyncio.TimeoutError:
                 logger.warning("Client %s queue full, dropping event", client_id)
@@ -215,7 +200,6 @@ class EventStream:
                 logger.error("Error sending to client %s: %s", client_id, str(e))
                 disconnected_clients.append(client_id)
 
-        # Cleanup disconnected clients
         for client_id in disconnected_clients:
             self.unsubscribe(client_id)
 
@@ -234,7 +218,6 @@ class EventStream:
         """
         filters = self._client_filters.get(client_id, {})
 
-        # Check event type filter
         event_types = filters.get("event_types", [])
         if event_types and event.event_type not in event_types:
             return False
@@ -245,14 +228,12 @@ class EventStream:
         """Shutdown stream and disconnect all clients."""
         logger.info("Shutting down event stream")
 
-        # Send shutdown signal to all clients
         for queue in self._clients.values():
             try:
                 await queue.put(None)
             except Exception:
                 pass
 
-        # Clear clients
         self._clients.clear()
         self._client_filters.clear()
 

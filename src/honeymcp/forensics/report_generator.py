@@ -102,29 +102,21 @@ class ReportGenerator:
         """
         report_id = f"report_{uuid4().hex[:12]}"
 
-        # Generate executive summary
         summary = self._generate_summary(timeline)
 
-        # Determine severity
         severity = self._assess_severity(timeline)
 
-        # Analyze attack vector
         attack_vector = self._identify_attack_vector(timeline)
 
-        # Extract techniques
         techniques = self._extract_techniques(timeline)
 
-        # Extract IOCs
         iocs = self._extract_iocs(timeline)
 
-        # Generate recommendations
         recommendations = self._generate_recommendations(timeline)
         mitigation_steps = self._generate_mitigation_steps(timeline)
 
-        # Map to MITRE ATT&CK
         mitre_tactics, mitre_techniques = self._map_to_mitre(timeline)
 
-        # Generate tags
         tags = self._generate_tags(timeline)
 
         report = ForensicReport(
@@ -165,7 +157,6 @@ class ReportGenerator:
             f"Maximum threat level: {timeline.max_threat_level.upper()}.",
         ]
 
-        # Add sophistication assessment
         if timeline.event_count >= 10:
             summary_parts.append("High persistence observed - sustained attack campaign.")
         elif len(timeline.unique_tools_used) >= 5:
@@ -177,7 +168,6 @@ class ReportGenerator:
 
     def _assess_severity(self, timeline: AttackTimeline) -> str:
         """Assess overall attack severity."""
-        # Score based on multiple factors
         score = 0
 
         # Threat level (0-40 points)
@@ -204,7 +194,7 @@ class ReportGenerator:
         elif timeline.duration_seconds >= 600:  # 10 minutes
             score += 5
 
-        # Map score to severity
+        # Cutoffs are against the 100-point maximum budgeted above
         if score >= 70:
             return "critical"
         elif score >= 50:
@@ -222,7 +212,6 @@ class ReportGenerator:
 
         first_tools = timeline.tool_sequence[:3]
 
-        # Common patterns
         if any("list" in tool.lower() or "enumerate" in tool.lower() for tool in first_tools):
             return "Reconnaissance and Discovery"
         elif any("execute" in tool.lower() or "command" in tool.lower() for tool in first_tools):
@@ -243,7 +232,6 @@ class ReportGenerator:
         for event in timeline.events:
             tool = event.tool_name or ""
 
-            # Map tool names to techniques
             if "list" in tool.lower() or "enumerate" in tool.lower():
                 techniques.add("System Enumeration")
             if "execute" in tool.lower() or "command" in tool.lower():
@@ -267,26 +255,21 @@ class ReportGenerator:
         """Extract indicators of compromise."""
         iocs = []
 
-        # Tool usage patterns
         if len(timeline.unique_tools_used) >= 5:
             iocs.append(f"High tool diversity: {len(timeline.unique_tools_used)} unique tools")
 
-        # Rapid succession attacks
         if timeline.avg_time_between_events < 5:
             iocs.append(
                 f"Rapid attack sequence: {timeline.avg_time_between_events:.1f}s between attempts"
             )
 
-        # Specific tool sequences
         if len(timeline.tool_sequence) >= 3:
             sequence_str = " -> ".join(timeline.tool_sequence[:3])
             iocs.append(f"Attack sequence: {sequence_str}")
 
-        # Session duration
         if timeline.duration_seconds >= 3600:
             iocs.append(f"Sustained attack: {self._format_duration(timeline.duration_seconds)}")
 
-        # High threat level
         if timeline.max_threat_level in ["high", "critical"]:
             iocs.append(f"Critical threat level: {timeline.max_threat_level}")
 
@@ -296,23 +279,19 @@ class ReportGenerator:
         """Generate security recommendations."""
         recommendations = []
 
-        # Based on threat level
         if timeline.max_threat_level in ["high", "critical"]:
             recommendations.append("Immediate investigation required - critical threat detected")
             recommendations.append("Review authentication logs for this session")
             recommendations.append("Consider blocking source if identifiable")
 
-        # Based on persistence
         if timeline.event_count >= 10:
             recommendations.append("Implement rate limiting to prevent sustained attacks")
             recommendations.append("Enable session lockout after repeated honeypot triggers")
 
-        # Based on tool diversity
         if len(timeline.unique_tools_used) >= 5:
             recommendations.append("Attacker shows high sophistication - enhance monitoring")
             recommendations.append("Share threat intelligence with security community")
 
-        # Based on categories
         if "rce" in timeline.attack_categories:
             recommendations.append("Review and harden command execution controls")
         if "exfiltration" in timeline.attack_categories:
@@ -320,7 +299,6 @@ class ReportGenerator:
         if "credential_access" in timeline.attack_categories:
             recommendations.append("Enforce multi-factor authentication")
 
-        # General recommendations
         recommendations.append("Update ghost tool catalog based on attacker behavior")
         recommendations.append("Document attack patterns for future detection")
 
@@ -359,14 +337,11 @@ class ReportGenerator:
         """Generate report tags for categorization."""
         tags = []
 
-        # Severity tag
         tags.append(f"severity:{timeline.max_threat_level}")
 
-        # Category tags
         for category in timeline.attack_categories:
             tags.append(f"category:{category}")
 
-        # Sophistication tags
         if len(timeline.unique_tools_used) >= 5:
             tags.append("sophisticated")
         if timeline.event_count >= 10:
@@ -406,15 +381,12 @@ class ReportGenerator:
         report_id = f"comparison_{uuid4().hex[:12]}"
         session_ids = [t.session_id for t in timelines]
 
-        # Find common tools
         tool_sets = [set(t.unique_tools_used) for t in timelines]
         common_tools = list(set.intersection(*tool_sets))
 
-        # Find common categories
         category_sets = [set(t.attack_categories) for t in timelines]
         common_categories = list(set.intersection(*category_sets))
 
-        # Find unique tools per session
         unique_tools_per_session = {}
         for timeline in timelines:
             other_tools = set()
@@ -425,11 +397,11 @@ class ReportGenerator:
             unique = set(timeline.unique_tools_used) - other_tools
             unique_tools_per_session[timeline.session_id] = list(unique)
 
-        # Calculate averages
         avg_duration = sum(t.duration_seconds for t in timelines) / len(timelines)
         avg_events = sum(t.event_count for t in timelines) / len(timelines)
 
-        # Calculate sophistication scores (simplified)
+        # Sophistication weights (simplified): tools 0.4, events 0.3, hours 0.3,
+        # normalized by 10 and clamped to 1.0
         sophistication_scores = {}
         for timeline in timelines:
             score = (
@@ -439,14 +411,12 @@ class ReportGenerator:
             )
             sophistication_scores[timeline.session_id] = min(1.0, score / 10)
 
-        # Generate analysis
         analysis = self._generate_comparison_analysis(
             timelines,
             common_tools,
             common_categories,
         )
 
-        # Identify similarities and differences
         similarities = self._identify_similarities(timelines, common_tools, common_categories)
         differences = self._identify_differences(timelines, unique_tools_per_session)
 
@@ -493,7 +463,7 @@ class ReportGenerator:
         if common_categories:
             parts.append(f"Common attack categories: {', '.join(common_categories)}.")
 
-        # Analyze timing patterns
+        # >5x spread in duration is treated as distinct attacker profiles
         durations = [t.duration_seconds for t in timelines]
         if max(durations) / min(durations) > 5:
             parts.append("Significant variation in attack duration - different attacker profiles.")
@@ -517,7 +487,6 @@ class ReportGenerator:
         if common_categories:
             similarities.append(f"Common categories: {', '.join(common_categories)}")
 
-        # Check for similar timing patterns
         avg_times = [t.avg_time_between_events for t in timelines]
         if max(avg_times) / min(avg_times) < 2:
             similarities.append("Similar attack pacing across sessions")
@@ -532,21 +501,18 @@ class ReportGenerator:
         """Identify key differences."""
         differences = []
 
-        # Tool diversity
         tool_counts = [len(t.unique_tools_used) for t in timelines]
         if max(tool_counts) > min(tool_counts) * 2:
             differences.append(
                 f"Tool diversity varies: {min(tool_counts)}-{max(tool_counts)} tools per session"
             )
 
-        # Duration variance
         durations = [t.duration_seconds for t in timelines]
         if max(durations) > min(durations) * 3:
             differences.append(
                 f"Duration varies significantly: {min(durations):.0f}s to {max(durations):.0f}s"
             )
 
-        # Unique tools
         for session_id, tools in unique_tools_per_session.items():
             if tools:
                 differences.append(

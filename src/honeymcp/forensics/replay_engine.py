@@ -54,21 +54,18 @@ class ReplayEngine:
         if not events:
             raise ValueError("Cannot create timeline from empty events list")
 
-        # Verify all events are from same session
         session_ids = set(e.session_id for e in events)
         if len(session_ids) > 1:
             raise ValueError(f"Events from multiple sessions: {session_ids}")
 
         session_id = events[0].session_id
 
-        # Sort events by timestamp
         sorted_events = sorted(events, key=lambda e: e.timestamp)
 
         start_time = sorted_events[0].timestamp
         end_time = sorted_events[-1].timestamp
         duration = (end_time - start_time).total_seconds()
 
-        # Build timeline events
         timeline_events = []
         for event in sorted_events:
             elapsed = (event.timestamp - start_time).total_seconds()
@@ -89,19 +86,17 @@ class ReplayEngine:
             )
             timeline_events.append(timeline_event)
 
-        # Calculate statistics
         unique_tools = list(set(e.ghost_tool_called for e in sorted_events))
         attack_categories = list(set(e.attack_category for e in sorted_events))
         tool_sequence = [e.ghost_tool_called for e in sorted_events]
 
-        # Find max threat level
+        # Ordered low -> critical; index position is the severity ranking
         threat_levels = ["low", "medium", "high", "critical"]
         max_threat = "low"
         for event in sorted_events:
             if threat_levels.index(event.threat_level) > threat_levels.index(max_threat):
                 max_threat = event.threat_level
 
-        # Calculate average time between events
         if len(sorted_events) > 1:
             avg_time = duration / (len(sorted_events) - 1)
         else:
@@ -215,7 +210,6 @@ class ReplayEngine:
 
         session.is_playing = True
 
-        # Start playback task
         task = asyncio.create_task(self._playback_loop(session))
         self._playback_tasks[session.replay_id] = task
 
@@ -228,7 +222,6 @@ class ReplayEngine:
 
         session.is_playing = False
 
-        # Cancel playback task
         if session.replay_id in self._playback_tasks:
             task = self._playback_tasks[session.replay_id]
             task.cancel()
@@ -254,7 +247,6 @@ class ReplayEngine:
         if was_playing:
             await self._pause(session)
 
-        # Validate index
         if 0 <= target_index < len(session.timeline.events):
             session.current_index = target_index
             logger.info(
@@ -290,12 +282,12 @@ class ReplayEngine:
             while session.is_playing and session.current_index < len(session.timeline.events):
                 current_event = session.timeline.events[session.current_index]
 
-                # Calculate delay until next event
                 if session.current_index < len(session.timeline.events) - 1:
                     next_event = session.timeline.events[session.current_index + 1]
                     delay = next_event.elapsed_seconds - current_event.elapsed_seconds
 
-                    # Apply speed multiplier
+                    # Values scale the *delay*, so they are inverse of the speed
+                    # (2x speed = 0.5x wait); INSTANT collapses the delay to 0.
                     speed_multipliers = {
                         ReplaySpeed.REALTIME: 1.0,
                         ReplaySpeed.FAST_2X: 0.5,
@@ -309,11 +301,9 @@ class ReplayEngine:
                     if delay > 0:
                         await asyncio.sleep(delay)
 
-                # Advance to next event
                 session.current_index += 1
                 session.last_updated = datetime.utcnow()
 
-            # Reached end
             session.is_playing = False
             logger.info("Replay %s completed", session.replay_id)
 
@@ -339,17 +329,14 @@ class ReplayEngine:
         session = self._active_sessions[replay_id]
         timeline = session.timeline
 
-        # Get current event
         current_event = None
         if 0 <= session.current_index < len(timeline.events):
             current_event = timeline.events[session.current_index]
 
-        # Calculate progress
         progress = 0.0
         if len(timeline.events) > 0:
             progress = (session.current_index / len(timeline.events)) * 100
 
-        # Calculate elapsed and remaining time
         elapsed = 0.0
         remaining = timeline.duration_seconds
 
@@ -417,7 +404,7 @@ class ReplayEngine:
         """Shutdown replay engine and stop all sessions."""
         logger.info("Shutting down replay engine")
 
-        # Stop all active sessions
+        # list() copy: stop_replay() deletes from _active_sessions as we iterate
         for replay_id in list(self._active_sessions.keys()):
             await self.stop_replay(replay_id)
 

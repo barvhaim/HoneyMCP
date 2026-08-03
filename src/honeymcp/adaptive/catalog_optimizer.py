@@ -63,10 +63,8 @@ class CatalogOptimizer:
         """
         recommendation_id = f"rec_{uuid4().hex[:12]}"
 
-        # Get metrics for current tools
         metrics = await self.tracker.get_recent_metrics(hours=self.config.evaluation_window_hours)
 
-        # Analyze based on strategy
         if self.config.strategy == OptimizationStrategy.BALANCED:
             recommendation = await self._balanced_optimization(
                 current_tools, metrics, recommendation_id
@@ -107,7 +105,6 @@ class CatalogOptimizer:
         tools_to_add = []
         rationale_parts = []
 
-        # Identify low-performing tools
         if self.config.auto_retire_enabled:
             for tool in current_tools:
                 metric = metrics.get(tool.name)
@@ -117,17 +114,14 @@ class CatalogOptimizer:
                         f"Remove '{tool.name}' (score: {metric.overall_score:.2f})"
                     )
 
-        # Ensure minimum tools
         current_count = len(current_tools) - len(tools_to_remove)
         if current_count < self.config.min_tools:
             needed = self.config.min_tools - current_count
             tools_to_add.extend([f"new_tool_{i}" for i in range(needed)])
             rationale_parts.append(f"Add {needed} tools to meet minimum")
 
-        # Limit maximum tools
         if current_count > self.config.max_tools:
             excess = current_count - self.config.max_tools
-            # Remove lowest scoring tools
             sorted_tools = sorted(
                 [(t.name, metrics.get(t.name)) for t in current_tools],
                 key=lambda x: x[1].overall_score if x[1] else 0.0,
@@ -164,7 +158,7 @@ class CatalogOptimizer:
         tools_to_remove = []
         rationale_parts = []
 
-        # Remove tools with low detection scores
+        # 0.5 detection floor is strategy-local, not config.min_score_threshold
         if self.config.auto_retire_enabled:
             for tool in current_tools:
                 metric = metrics.get(tool.name)
@@ -205,7 +199,7 @@ class CatalogOptimizer:
         tools_to_remove = []
         rationale_parts = []
 
-        # Remove tools with low engagement
+        # 0.4 engagement floor is strategy-local, not config.min_score_threshold
         if self.config.auto_retire_enabled:
             for tool in current_tools:
                 metric = metrics.get(tool.name)
@@ -243,10 +237,8 @@ class CatalogOptimizer:
 
         Adapts based on current attack patterns and catalog performance.
         """
-        # Get overall statistics
         stats = await self.tracker.get_statistics()
 
-        # Decide strategy based on current state
         if stats["avg_score"] < 0.5:
             # Low overall performance - focus on detection
             return await self._detection_focused_optimization(
@@ -275,10 +267,8 @@ class CatalogOptimizer:
         """
         snapshot_id = f"snap_{uuid4().hex[:12]}"
 
-        # Get all metrics
         all_metrics = self.tracker.get_all_metrics()
 
-        # Calculate overall effectiveness
         if all_metrics:
             overall_effectiveness = sum(m.overall_score for m in all_metrics.values()) / len(
                 all_metrics
@@ -288,7 +278,6 @@ class CatalogOptimizer:
             overall_effectiveness = 0.0
             avg_tool_score = 0.0
 
-        # Get statistics
         stats = await self.tracker.get_statistics()
 
         snapshot = CatalogSnapshot(
@@ -356,12 +345,10 @@ class CatalogOptimizer:
         if not snap1 or not snap2:
             return {"error": "One or both snapshots not found"}
 
-        # Calculate changes
         tools_added = set(snap2.active_tools) - set(snap1.active_tools)
         tools_removed = set(snap1.active_tools) - set(snap2.active_tools)
         tools_kept = set(snap1.active_tools) & set(snap2.active_tools)
 
-        # Calculate effectiveness change
         effectiveness_change = snap2.overall_effectiveness - snap1.overall_effectiveness
 
         return {
@@ -429,10 +416,8 @@ class CatalogOptimizer:
         Returns:
             Impact prediction
         """
-        # Get current metrics
         current_metrics = self.tracker.get_all_metrics()
 
-        # Calculate current average score
         if current_metrics:
             current_avg = sum(m.overall_score for m in current_metrics.values()) / len(
                 current_metrics
@@ -443,7 +428,6 @@ class CatalogOptimizer:
         # Simulate removal of low-performing tools
         remaining_tools = [t for t in current_tools if t.name not in recommendation.tools_to_remove]
 
-        # Calculate new average (excluding removed tools)
         if remaining_tools:
             remaining_scores = [
                 current_metrics[t.name].overall_score
@@ -457,7 +441,6 @@ class CatalogOptimizer:
         else:
             new_avg = 0.0
 
-        # Estimate impact
         predicted_improvement = new_avg - current_avg
 
         return {
@@ -484,7 +467,6 @@ class CatalogOptimizer:
         Returns:
             Updated catalog
         """
-        # Remove tools
         updated_tools = [t for t in current_tools if t.name not in recommendation.tools_to_remove]
 
         # Note: Adding new tools would require tool generation

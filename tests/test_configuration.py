@@ -25,7 +25,6 @@ num_dynamic_tools: 3
         
         yield config_path
         
-        # Cleanup
         if config_path.exists():
             config_path.unlink()
 

@@ -88,13 +88,10 @@ class RedisSessionBackend(SessionBackend):
         client = await self._get_client()
         key = f"{self.prefix}{session_id}:history"
 
-        # Store as JSON with timestamp
         value = json.dumps({"tool": tool_name, "timestamp": timestamp.isoformat()})
 
-        # Append to list
         await client.rpush(key, value)
 
-        # Set TTL on the list
         await client.expire(key, self.ttl)
 
     async def get_tool_history(self, session_id: str) -> List[str]:
@@ -102,17 +99,14 @@ class RedisSessionBackend(SessionBackend):
         client = await self._get_client()
         key = f"{self.prefix}{session_id}:history"
 
-        # Get all items from list
         history = await client.lrange(key, 0, -1)
 
-        # Extract tool names from JSON
         tools = []
         for item in history:
             try:
                 data = json.loads(item)
                 tools.append(data["tool"])
             except (json.JSONDecodeError, KeyError):
-                # Skip malformed entries
                 continue
 
         return tools
@@ -130,16 +124,12 @@ class RedisSessionBackend(SessionBackend):
         now = datetime.utcnow()
         cutoff = now - timedelta(minutes=1)
 
-        # Add current timestamp to sorted set
         await client.zadd(key, {now.isoformat(): now.timestamp()})
 
-        # Remove timestamps older than 1 minute
         await client.zremrangebyscore(key, "-inf", cutoff.timestamp())
 
-        # Count remaining timestamps
         count = await client.zcard(key)
 
-        # Set TTL on the sorted set
         await client.expire(key, 60)
 
         return count <= max_per_minute
@@ -150,7 +140,6 @@ class RedisSessionBackend(SessionBackend):
         Note: Redis handles TTL automatically, so this is a no-op.
         Returns 0 as no manual cleanup is needed.
         """
-        # Redis handles expiration automatically via TTL
         return 0
 
     async def get_session_count(self) -> int:
@@ -173,12 +162,10 @@ class RedisSessionBackend(SessionBackend):
         client = await self._get_client()
         pattern = f"{self.prefix}*"
 
-        # Use SCAN to find all keys
         keys_to_delete = []
         async for key in client.scan_iter(match=pattern, count=100):
             keys_to_delete.append(key)
 
-        # Delete in batches
         if keys_to_delete:
             await client.delete(*keys_to_delete)
 

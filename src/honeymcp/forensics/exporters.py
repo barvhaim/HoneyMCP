@@ -93,7 +93,6 @@ class ForensicsExporter:
         output = StringIO()
         writer = csv.writer(output)
 
-        # Header
         writer.writerow(
             [
                 "Timestamp",
@@ -106,7 +105,6 @@ class ForensicsExporter:
             ]
         )
 
-        # Events
         for event in timeline.events:
             writer.writerow(
                 [
@@ -116,7 +114,7 @@ class ForensicsExporter:
                     event.tool_name or "",
                     event.threat_level or "",
                     event.attack_category or "",
-                    (event.response or "")[:100],  # Truncate long responses
+                    (event.response or "")[:100],
                 ]
             )
 
@@ -126,14 +124,12 @@ class ForensicsExporter:
         """Export timeline as STIX 2.1 bundle."""
         indicators = []
 
-        # Create indicator for each unique tool
         for tool in timeline.unique_tools_used:
             indicator_id = f"indicator--{uuid4()}"
 
-            # Create STIX pattern
+            # x-honeymcp-tool is a custom STIX object type, not a standard one
             pattern = f"[x-honeymcp-tool:name = '{tool}']"
 
-            # Count occurrences
             tool_count = timeline.tool_sequence.count(tool)
 
             indicator = STIXIndicator(
@@ -155,7 +151,6 @@ class ForensicsExporter:
             )
             indicators.append(indicator)
 
-        # Create bundle
         bundle = STIXBundle(
             id=f"bundle--{uuid4()}",
             objects=indicators,

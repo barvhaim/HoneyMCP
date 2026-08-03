@@ -9,7 +9,6 @@ from fastmcp import FastMCP
 from honeymcp import honeypot
 
 
-# Create a file system MCP server
 mcp = FastMCP("FileSystem Demo Server")
 
 
@@ -104,8 +103,7 @@ if __name__ == "__main__":
     print()
     print("Starting MCP server...")
     print()
-    
-    # Run the server
+
     print("=" * 50)
 
     if transport == "stdio":

@@ -35,7 +35,6 @@ from honeymcp.forensics.exporters import ForensicsExporter
 
 logger = logging.getLogger(__name__)
 
-# How often the SSE watcher rescans the event directory for new captures.
 _EVENT_WATCH_INTERVAL_SECONDS = 1.0
 
 
@@ -45,8 +44,7 @@ async def _watch_events_for_stream(storage_path: Path, poll_interval: float) -> 
     HoneyMCP-wrapped MCP servers normally run in a *different process* from this
     API, so an in-memory publish inside the interceptor can never reach the
     dashboard's stream. Watching the shared on-disk event store is what makes
-    ``/stream`` live for the common deployment: server in one process, dashboard
-    in another.
+    ``/stream`` live.
 
     Only events observed after startup are published; existing captures are
     already delivered by the stream's own history replay and by ``/events``.
@@ -62,15 +60,13 @@ async def _watch_events_for_stream(storage_path: Path, poll_interval: float) -> 
         try:
             events = await list_events(storage_path=storage_path)
             if not primed:
-                # First pass only records what already exists so we don't
-                # re-announce history as if it were live.
                 seen = {event.event_id for event in events}
                 primed = True
             else:
                 stream = StreamManager.get_stream()
                 if stream is not None:
                     # Oldest first so the dashboard's prepend order matches
-                    # real chronological arrival.
+                    # chronological arrival.
                     for event in sorted(events, key=lambda e: e.timestamp):
                         if event.event_id in seen:
                             continue
@@ -209,11 +205,9 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
     dashboard_root = Path(__file__).resolve().parent.parent / "dashboard" / "react_umd"
     app.state.dashboard_root = dashboard_root
 
-    # Background task publishing on-disk captures to SSE clients; started
-    # lazily on the first /stream connection (see the /stream endpoint).
+    # Started lazily on the first /stream connection.
     app.state.event_watcher_task = None
 
-    # Initialize forensics components
     app.state.replay_engine = ReplayEngine()
     app.state.report_generator = ReportGenerator()
     app.state.forensics_exporter = ForensicsExporter()
@@ -336,13 +330,11 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
 
         detector = PatternDetector()
 
-        # Run all detection algorithms
         all_patterns = []
         all_patterns.extend(await detector.detect_coordinated_attacks(events))
         all_patterns.extend(await detector.detect_attack_campaigns(events))
         all_patterns.extend(await detector.detect_anomalies(events))
 
-        # Filter by type and confidence
         filtered = [
             p
             for p in all_patterns
@@ -350,7 +342,6 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
             and (pattern_type is None or p.pattern_type == pattern_type)
         ]
 
-        # Sort by confidence (highest first)
         filtered.sort(key=lambda p: p.confidence, reverse=True)
 
         return filtered
@@ -378,13 +369,11 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
 
         detector = PatternDetector()
 
-        # Run all detection algorithms
         all_patterns = []
         all_patterns.extend(await detector.detect_coordinated_attacks(events))
         all_patterns.extend(await detector.detect_attack_campaigns(events))
         all_patterns.extend(await detector.detect_anomalies(events))
 
-        # Calculate summary statistics
         by_type: Dict[str, int] = {}
         by_severity: Dict[str, int] = {}
         high_confidence_count = 0
@@ -395,7 +384,6 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
             if pattern.confidence >= 0.8:
                 high_confidence_count += 1
 
-        # Get most recent patterns (last 10)
         sorted_patterns = sorted(all_patterns, key=lambda p: p.last_seen, reverse=True)
         recent_patterns = sorted_patterns[:10]
 
@@ -447,13 +435,11 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
         if not events:
             return []
 
-        # Get unique session IDs
         session_ids = list(set(e.session_id for e in events))
 
         detector = PatternDetector()
         profiles = []
 
-        # Build profile for each session
         for session_id in session_ids:
             try:
                 profile = await detector.build_attacker_profile(session_id, events)
@@ -462,7 +448,6 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
             except ValueError:
                 continue
 
-        # Sort by sophistication (highest first)
         profiles.sort(key=lambda p: p.sophistication_score, reverse=True)
 
         return profiles[:limit]
@@ -488,14 +473,10 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
         """
         import uuid
 
-        # Initialize stream if not already done
         stream = StreamManager.get_stream()
         if stream is None:
             stream = StreamManager.initialize(max_history=100)
 
-        # Lazily start the on-disk watcher so attacks captured by MCP server
-        # processes (SSE/HTTP/stdio transports all run separately from this API)
-        # show up live instead of only after a manual browser refresh.
         watcher = getattr(app.state, "event_watcher_task", None)
         if watcher is None or watcher.done():
             app.state.event_watcher_task = asyncio.create_task(
@@ -505,15 +486,12 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
                 )
             )
 
-        # Generate unique client ID
         client_id = f"client_{uuid.uuid4().hex[:12]}"
 
-        # Parse event types filter
         event_type_list = None
         if event_types:
             event_type_list = [t.strip() for t in event_types.split(",") if t.strip()]
 
-        # Create streaming response
         return StreamingResponse(
             stream.subscribe(
                 client_id=client_id,
@@ -535,7 +513,6 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
         session_id: str = Query(..., description="Session ID to replay"),
     ) -> dict:
         """Start a new replay session for an attack."""
-        # Get events for session
         events = await list_events(
             storage_path=app.state.event_storage_path,
             session_id=session_id,
@@ -544,10 +521,8 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
         if not events:
             raise HTTPException(status_code=404, detail=f"No events found for session {session_id}")
 
-        # Create timeline
         timeline = await app.state.replay_engine.create_timeline(events)
 
-        # Start replay
         replay_id = await app.state.replay_engine.start_replay(timeline)
 
         return {
@@ -594,7 +569,6 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
         analyst_notes: Optional[str] = Query(default=None, description="Optional analyst notes"),
     ) -> ForensicReport:
         """Generate forensic report for an attack session."""
-        # Get events for session
         events = await list_events(
             storage_path=app.state.event_storage_path,
             session_id=session_id,
@@ -603,10 +577,8 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
         if not events:
             raise HTTPException(status_code=404, detail=f"No events found for session {session_id}")
 
-        # Create timeline
         timeline = await app.state.replay_engine.create_timeline(events)
 
-        # Generate report
         report = await app.state.report_generator.generate_report(
             timeline=timeline,
             analyst_notes=analyst_notes,
@@ -637,7 +609,6 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
             timeline = await app.state.replay_engine.create_timeline(events)
             timelines.append(timeline)
 
-        # Generate comparison
         comparison = await app.state.report_generator.compare_sessions(timelines)
 
         return comparison.model_dump(mode="json")
@@ -648,7 +619,6 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
         format: ExportFormat = Query(default=ExportFormat.JSON, description="Export format"),
     ) -> Response:
         """Export attack timeline in specified format."""
-        # Get events for session
         events = await list_events(
             storage_path=app.state.event_storage_path,
             session_id=session_id,
@@ -657,13 +627,10 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
         if not events:
             raise HTTPException(status_code=404, detail=f"No events found for session {session_id}")
 
-        # Create timeline
         timeline = await app.state.replay_engine.create_timeline(events)
 
-        # Export
         content = await app.state.forensics_exporter.export_timeline(timeline, format)
 
-        # Set content type and filename
         content_types = {
             ExportFormat.JSON: "application/json",
             ExportFormat.CSV: "text/csv",
@@ -744,12 +711,10 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
 
         optimizer = app.state.catalog_optimizer
 
-        # Get current tools from catalog
         from honeymcp.core.ghost_tools import list_ghost_tools
 
         current_tools = list_ghost_tools()
 
-        # Generate recommendations
         recommendation = await optimizer.analyze_catalog(current_tools)
 
         return recommendation.model_dump(mode="json")
@@ -762,12 +727,10 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
 
         optimizer = app.state.catalog_optimizer
 
-        # Get current tools
         from honeymcp.core.ghost_tools import list_ghost_tools
 
         current_tools = list_ghost_tools()
 
-        # Create snapshot
         snapshot = await optimizer.create_snapshot(current_tools)
 
         return snapshot.model_dump(mode="json")
@@ -805,7 +768,6 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
         if not hasattr(app.state, "attacker_profiler"):
             raise HTTPException(status_code=501, detail="Adaptive tools not enabled")
 
-        # Get events for session
         events = await list_events(
             storage_path=app.state.event_storage_path,
             session_id=session_id,

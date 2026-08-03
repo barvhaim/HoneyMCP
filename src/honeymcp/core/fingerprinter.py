@@ -14,7 +14,6 @@ from honeymcp.storage.session_backend import SessionBackend
 logger = logging.getLogger(__name__)
 
 
-# Module-level session backend instance
 _session_backend: Optional[SessionBackend] = None
 _legacy_session_store: Optional["SessionStore"] = None
 
@@ -141,7 +140,6 @@ class SessionStore:
         self._call_timestamps = {
             k: v for k, v in self._call_timestamps.items() if (now - v[1]) <= self._ttl
         }
-        # If still over max_size, evict oldest entries
         for store in (self._attacker_detected, self._tool_history, self._call_timestamps):
             if len(store) > self._max_size:
                 sorted_keys = sorted(store, key=lambda k: store[k][1])
@@ -198,7 +196,6 @@ class SessionStore:
                 self._call_timestamps[session_id] = ([now], now)
                 return True
             timestamps, _ = entry
-            # Prune timestamps older than 60 seconds
             cutoff = now - 60.0
             timestamps = [t for t in timestamps if t > cutoff]
             timestamps.append(now)
@@ -362,25 +359,20 @@ async def fingerprint_attack(
     Returns:
         Complete attack fingerprint with all available context
     """
-    # Extract session ID from context
     session_id = _extract_session_id(context)
 
-    # Get tool call history
     try:
         tool_history = await get_session_backend().get_tool_history(session_id)
     except RuntimeError:
         tool_history = []
 
-    # Try to extract conversation history (may not be available in MCP)
     conversation = _extract_conversation_history(context)
 
-    # Extract client metadata
     client_metadata = _extract_client_metadata(context)
 
     # Use the exact response that was returned by middleware when provided.
     fake_response = response_sent or ghost_spec.response_generator(arguments)
 
-    # Create unique event ID
     event_id = f"evt_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{uuid4().hex[:8]}"
 
     return AttackFingerprint(
@@ -427,7 +419,6 @@ def _extract_session_id(context: Any) -> str:
     except Exception:
         pass
 
-    # Try FastMCP middleware context first
     if hasattr(context, "fastmcp_context"):
         fast_ctx = getattr(context, "fastmcp_context")
         if fast_ctx is not None:
@@ -450,21 +441,18 @@ def _extract_session_id(context: Any) -> str:
                     if value:
                         return str(value)
 
-            # Fall back to FastMCP context session_id if available
             if hasattr(fast_ctx, "session_id"):
                 try:
                     return str(fast_ctx.session_id)
                 except Exception:
                     pass
 
-    # Try direct attributes on the context
     for attr in ["session_id", "id", "request_id", "connection_id"]:
         if hasattr(context, attr):
             value = getattr(context, attr)
             if value:
                 return str(value)
 
-    # Try dict-like contexts
     if isinstance(context, dict):
         for key in ["session_id", "id", "request_id", "connection_id"]:
             value = context.get(key)
@@ -526,7 +514,6 @@ def _extract_conversation_history(context: Any) -> Optional[List[Dict]]:
     if hasattr(context, "messages"):
         return getattr(context, "messages")
 
-    # Not available
     return None
 
 
@@ -534,7 +521,7 @@ def _extract_client_metadata(context: Any) -> Dict[str, Any]:
     """Extract available client metadata from context."""
     metadata = {}
 
-    # Try FastMCP HTTP helper for request info
+    # FastMCP HTTP helper: works even when request_context is unavailable.
     try:
         from fastmcp.server.dependencies import get_http_request
 
@@ -574,21 +561,17 @@ def _extract_client_metadata(context: Any) -> Dict[str, Any]:
                         except Exception:
                             pass
 
-    # Try to extract user agent
     if hasattr(context, "user_agent"):
         metadata["user_agent"] = getattr(context, "user_agent")
 
-    # Try to extract client info
     if hasattr(context, "client_info"):
         metadata["client_info"] = getattr(context, "client_info")
 
-    # Try to extract request headers
     if hasattr(context, "headers"):
         headers = getattr(context, "headers")
         if isinstance(headers, dict):
             metadata["headers"] = headers
 
-    # If no metadata found, return minimal info
     if not metadata:
         metadata["user_agent"] = "unknown"
 

@@ -63,8 +63,7 @@ class TestEventStream:
         
         event = create_test_event()
         await stream.publish_attack(event)
-        
-        # Should be in history
+
         assert len(stream._history) == 1
         assert stream._history[0].event_type == "attack"
         assert stream._history[0].data["event_id"] == "evt_001"
@@ -76,8 +75,7 @@ class TestEventStream:
         
         pattern = create_test_pattern()
         await stream.publish_pattern(pattern)
-        
-        # Should be in history
+
         assert len(stream._history) == 1
         assert stream._history[0].event_type == "pattern"
         assert stream._history[0].data["pattern_id"] == "pattern_001"
@@ -94,8 +92,7 @@ class TestEventStream:
         }
         
         await stream.publish_alert(alert_data)
-        
-        # Should be in history
+
         assert len(stream._history) == 1
         assert stream._history[0].event_type == "alert"
         assert stream._history[0].data["alert_id"] == "alert_001"
@@ -105,13 +102,12 @@ class TestEventStream:
         """Test that history respects max size."""
         stream = EventStream(max_history=5)
         
-        # Publish 10 events
         for i in range(10):
             event = create_test_event()
             event.event_id = f"evt_{i:03d}"
             await stream.publish_attack(event)
-        
-        # Should only keep last 5
+
+        # oldest 5 are evicted, leaving evt_005..evt_009
         assert len(stream._history) == 5
         assert stream._history[0].data["event_id"] == "evt_005"
         assert stream._history[-1].data["event_id"] == "evt_009"
@@ -121,15 +117,13 @@ class TestEventStream:
         """Test subscribing with historical events."""
         stream = EventStream()
         
-        # Publish some events first
         for i in range(3):
             event = create_test_event()
             event.event_id = f"evt_{i:03d}"
             await stream.publish_attack(event)
-        
-        # Subscribe and collect events
+
         received = []
-        
+
         async def collect_events():
             async for sse_data in stream.subscribe(
                 client_id="test_client",
@@ -138,14 +132,12 @@ class TestEventStream:
                 received.append(sse_data)
                 if len(received) >= 3:
                     break
-        
-        # Run with timeout
+
         try:
             await asyncio.wait_for(collect_events(), timeout=1.0)
         except asyncio.TimeoutError:
             pass
-        
-        # Should have received historical events
+
         assert len(received) >= 3
 
     @pytest.mark.asyncio
@@ -153,14 +145,12 @@ class TestEventStream:
         """Test subscribing without historical events."""
         stream = EventStream()
         
-        # Publish some events first
         for i in range(3):
             event = create_test_event()
             await stream.publish_attack(event)
-        
-        # Subscribe without history
+
         received = []
-        
+
         async def collect_events():
             async for sse_data in stream.subscribe(
                 client_id="test_client",
@@ -169,25 +159,21 @@ class TestEventStream:
                 received.append(sse_data)
                 if len(received) >= 1:
                     break
-        
-        # Start collecting
+
         collect_task = asyncio.create_task(collect_events())
-        
-        # Give it a moment to start
+
+        # let the subscriber register before publishing, or it misses the event
         await asyncio.sleep(0.1)
-        
-        # Publish new event
+
         event = create_test_event()
         event.event_id = "evt_new"
         await stream.publish_attack(event)
-        
-        # Wait for collection
+
         try:
             await asyncio.wait_for(collect_task, timeout=1.0)
         except asyncio.TimeoutError:
             pass
-        
-        # Should have received only new event
+
         assert len(received) >= 1
 
     @pytest.mark.asyncio
@@ -195,14 +181,12 @@ class TestEventStream:
         """Test filtering by event type."""
         stream = EventStream()
         
-        # Publish different event types
         event = create_test_event()
         await stream.publish_attack(event)
-        
+
         pattern = create_test_pattern()
         await stream.publish_pattern(pattern)
-        
-        # Subscribe with filter
+
         received = []
         
         async def collect_events():
@@ -219,8 +203,7 @@ class TestEventStream:
             await asyncio.wait_for(collect_events(), timeout=1.0)
         except asyncio.TimeoutError:
             pass
-        
-        # Should only receive attack events
+
         assert len(received) >= 1
         assert "attack" in received[0]
 
@@ -243,21 +226,18 @@ class TestEventStream:
                 if len(clients_received[client_id]) >= 2:
                     break
         
-        # Start both clients
         task1 = asyncio.create_task(collect_for_client("client_1"))
         task2 = asyncio.create_task(collect_for_client("client_2"))
-        
-        # Give them time to start
+
+        # let both subscribers register before publishing
         await asyncio.sleep(0.1)
-        
-        # Publish events
+
         for i in range(2):
             event = create_test_event()
             event.event_id = f"evt_{i:03d}"
             await stream.publish_attack(event)
             await asyncio.sleep(0.05)
-        
-        # Wait for collection
+
         try:
             await asyncio.wait_for(
                 asyncio.gather(task1, task2),
@@ -265,8 +245,7 @@ class TestEventStream:
             )
         except asyncio.TimeoutError:
             pass
-        
-        # Both clients should have received events
+
         assert len(clients_received["client_1"]) >= 1
         assert len(clients_received["client_2"]) >= 1
 
@@ -275,14 +254,12 @@ class TestEventStream:
         """Test client unsubscribe."""
         stream = EventStream()
         
-        # Subscribe
         async def subscribe_briefly():
             async for _ in stream.subscribe(client_id="test_client"):
-                break  # Exit immediately
-        
+                break  # leaving the generator is what triggers unsubscribe
+
         await subscribe_briefly()
-        
-        # Client should be removed
+
         assert "test_client" not in stream._clients
 
     @pytest.mark.asyncio
@@ -290,7 +267,6 @@ class TestEventStream:
         """Test stream shutdown."""
         stream = EventStream()
         
-        # Add some clients
         async def dummy_subscribe(client_id: str):
             try:
                 async for _ in stream.subscribe(client_id=client_id):
@@ -303,13 +279,11 @@ class TestEventStream:
         
         await asyncio.sleep(0.1)
         
-        # Shutdown
         await stream.shutdown()
-        
-        # Clients should be cleared
+
         assert len(stream._clients) == 0
-        
-        # Cancel tasks
+
+        # cancel the still-suspended subscribe tasks so they don't leak
         task1.cancel()
         task2.cancel()
 
@@ -318,11 +292,10 @@ class TestEventStream:
         """Test getting stream statistics."""
         stream = EventStream(max_history=100)
         
-        # Publish some events
         for i in range(5):
             event = create_test_event()
             await stream.publish_attack(event)
-        
+
         stats = stream.get_stats()
         
         assert stats["active_clients"] == 0
@@ -346,8 +319,7 @@ class TestStreamManager:
         
         assert stream is not None
         assert stream.max_history == 50
-        
-        # Should return same instance
+
         stream2 = StreamManager.get_stream()
         assert stream is stream2
 

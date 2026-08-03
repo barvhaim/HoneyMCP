@@ -37,7 +37,6 @@ class AlertRule(BaseModel):
 
     enabled: bool = Field(default=True, description="Whether rule is active")
 
-    # Trigger conditions
     event_types: List[str] = Field(
         default_factory=lambda: ["attack"],
         description="Event types to monitor (attack, pattern, etc.)",
@@ -55,25 +54,21 @@ class AlertRule(BaseModel):
         default=None, ge=0.0, le=1.0, description="Minimum confidence score for patterns"
     )
 
-    # Alert configuration
     channels: List[AlertChannel] = Field(description="Channels to send alerts to")
     severity: AlertSeverity = Field(
         default=AlertSeverity.WARNING, description="Alert severity level"
     )
 
-    # Deduplication
     deduplicate: bool = Field(default=True, description="Enable alert deduplication")
     deduplicate_window_seconds: int = Field(
         default=300, description="Deduplication time window in seconds"
     )
 
-    # Rate limiting
     rate_limit_count: Optional[int] = Field(default=None, description="Max alerts per time window")
     rate_limit_window_seconds: int = Field(
         default=3600, description="Rate limit time window in seconds"
     )
 
-    # Custom metadata
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional rule metadata")
 
 
@@ -100,7 +95,6 @@ class Alert(BaseModel):
 
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional alert context")
 
-    # Delivery tracking
     delivery_status: Dict[str, str] = Field(
         default_factory=dict, description="Delivery status per channel (pending, sent, failed)"
     )
@@ -117,15 +111,12 @@ class AlertConfig(BaseModel):
 
     enabled: bool = Field(default=True, description="Enable alerting system")
 
-    # Slack configuration
     slack_webhook_url: Optional[str] = Field(default=None, description="Slack webhook URL")
     slack_channel: Optional[str] = Field(default=None, description="Default Slack channel")
 
-    # PagerDuty configuration
     pagerduty_api_key: Optional[str] = Field(default=None, description="PagerDuty API key")
     pagerduty_routing_key: Optional[str] = Field(default=None, description="PagerDuty routing key")
 
-    # Email configuration
     smtp_host: Optional[str] = Field(default=None, description="SMTP server host")
     smtp_port: int = Field(default=587, description="SMTP server port")
     smtp_username: Optional[str] = Field(default=None, description="SMTP username")
@@ -135,17 +126,14 @@ class AlertConfig(BaseModel):
         default_factory=list, description="Default recipient email addresses"
     )
 
-    # Webhook configuration
     webhook_urls: List[str] = Field(default_factory=list, description="Generic webhook URLs")
 
-    # Retry configuration
     max_retries: int = Field(default=3, description="Max delivery retry attempts")
     retry_delay_seconds: int = Field(default=60, description="Initial retry delay in seconds")
     retry_backoff_multiplier: float = Field(
         default=2.0, description="Exponential backoff multiplier"
     )
 
-    # Alert rules
     rules: List[AlertRule] = Field(default_factory=list, description="Configured alert rules")
 
 

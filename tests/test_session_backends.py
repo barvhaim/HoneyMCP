@@ -10,7 +10,7 @@ import pytest_asyncio
 from honeymcp.storage.session_backend import SessionBackend
 from honeymcp.storage.memory_backend import InMemorySessionBackend
 
-# Conditionally import Redis and SQLite backends
+# Redis/SQLite backends are optional extras; tests below skip when the driver is absent
 try:
     from honeymcp.storage.redis_backend import REDIS_AVAILABLE, RedisSessionBackend
 except ImportError:
@@ -38,12 +38,10 @@ async def redis_backend():
         redis_url="redis://localhost:6379", ttl=60, key_prefix="honeymcp:test:"
     )
 
-    # Clear any existing test data
     await backend.clear()
 
     yield backend
 
-    # Cleanup after test
     await backend.clear()
     await backend.close()
 
@@ -54,7 +52,6 @@ async def sqlite_backend():
     if not SQLITE_AVAILABLE:
         pytest.skip("SQLite not available")
 
-    # Use temporary file for testing
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = Path(f.name)
 
@@ -62,12 +59,10 @@ async def sqlite_backend():
 
     yield backend
 
-    # Cleanup after test
     await backend.clear()
     db_path.unlink(missing_ok=True)
 
 
-# Parametrize tests to run against all backends
 @pytest_asyncio.fixture(params=["memory", "redis", "sqlite"])
 async def backend(request):
     """Parametrized fixture that provides all backend types."""
@@ -103,13 +98,10 @@ class TestSessionBackendInterface:
         """Test marking and checking attacker status."""
         session_id = "test_session_1"
 
-        # Initially not an attacker
         assert await backend.is_attacker(session_id) is False
 
-        # Mark as attacker
         await backend.mark_attacker(session_id)
 
-        # Should now be flagged
         assert await backend.is_attacker(session_id) is True
 
     @pytest.mark.asyncio
@@ -117,16 +109,13 @@ class TestSessionBackendInterface:
         """Test recording and retrieving tool call history."""
         session_id = "test_session_2"
 
-        # Initially empty history
         history = await backend.get_tool_history(session_id)
         assert history == []
 
-        # Record some tool calls
         await backend.record_tool_call(session_id, "tool1", datetime.utcnow())
         await backend.record_tool_call(session_id, "tool2", datetime.utcnow())
         await backend.record_tool_call(session_id, "tool3", datetime.utcnow())
 
-        # Check history
         history = await backend.get_tool_history(session_id)
         assert len(history) == 3
         assert history == ["tool1", "tool2", "tool3"]
@@ -137,41 +126,33 @@ class TestSessionBackendInterface:
         session_id = "test_session_3"
         max_per_minute = 5
 
-        # First 5 calls should be allowed
         for i in range(5):
             result = await backend.check_rate_limit(session_id, max_per_minute)
             assert result is True, f"Call {i+1} should be allowed"
 
-        # 6th call should be blocked
         result = await backend.check_rate_limit(session_id, max_per_minute)
         assert result is False, "6th call should be blocked"
 
     @pytest.mark.asyncio
     async def test_session_count(self, backend: SessionBackend):
         """Test session counting."""
-        # Initially should be 0 or small
         initial_count = await backend.get_session_count()
 
-        # Add some sessions
         await backend.mark_attacker("session_1")
         await backend.mark_attacker("session_2")
         await backend.mark_attacker("session_3")
 
-        # Count should increase
         new_count = await backend.get_session_count()
         assert new_count >= initial_count + 3
 
     @pytest.mark.asyncio
     async def test_clear(self, backend: SessionBackend):
         """Test clearing all session data."""
-        # Add some data
         await backend.mark_attacker("session_1")
         await backend.record_tool_call("session_2", "tool1", datetime.utcnow())
 
-        # Clear everything
         await backend.clear()
 
-        # Verify data is gone
         assert await backend.is_attacker("session_1") is False
         history = await backend.get_tool_history("session_2")
         assert history == []
@@ -182,18 +163,14 @@ class TestSessionBackendInterface:
         session_1 = "session_1"
         session_2 = "session_2"
 
-        # Mark only session_1 as attacker
         await backend.mark_attacker(session_1)
 
-        # Check isolation
         assert await backend.is_attacker(session_1) is True
         assert await backend.is_attacker(session_2) is False
 
-        # Record tools for session_1 only
         await backend.record_tool_call(session_1, "tool1", datetime.utcnow())
         await backend.record_tool_call(session_1, "tool2", datetime.utcnow())
 
-        # Check isolation
         history_1 = await backend.get_tool_history(session_1)
         history_2 = await backend.get_tool_history(session_2)
 
@@ -207,32 +184,26 @@ class TestInMemoryBackend:
     @pytest.mark.asyncio
     async def test_ttl_expiration(self, memory_backend: InMemorySessionBackend):
         """Test that sessions expire after TTL."""
-        # Use very short TTL for testing
         backend = InMemorySessionBackend(ttl=1, max_size=100)
 
         session_id = "test_session"
         await backend.mark_attacker(session_id)
 
-        # Should be flagged immediately
         assert await backend.is_attacker(session_id) is True
 
-        # Wait for expiration
+        # sleep past the 1s TTL with margin so expiry is deterministic
         await asyncio.sleep(1.5)
 
-        # Should be expired now
         assert await backend.is_attacker(session_id) is False
 
     @pytest.mark.asyncio
     async def test_max_size_eviction(self, memory_backend: InMemorySessionBackend):
         """Test that oldest sessions are evicted when max_size is reached."""
-        # Use small max_size for testing
         backend = InMemorySessionBackend(ttl=3600, max_size=5)
 
-        # Add more sessions than max_size
         for i in range(10):
             await backend.mark_attacker(f"session_{i}")
 
-        # Count should not exceed max_size
         count = await backend.get_session_count()
         assert count <= 5
 
@@ -241,14 +212,12 @@ class TestInMemoryBackend:
         """Test manual cleanup of expired sessions."""
         backend = InMemorySessionBackend(ttl=3600, max_size=100)
 
-        # Add some sessions
         await backend.mark_attacker("session_1")
         await backend.mark_attacker("session_2")
 
-        # Cleanup with very short TTL (should remove all)
+        # ttl_seconds=0 forces every session to count as expired
         deleted = await backend.cleanup_expired(ttl_seconds=0)
 
-        # Should have deleted sessions
         assert deleted >= 0
 
 
@@ -259,7 +228,6 @@ class TestRedisBackend:
     @pytest.mark.asyncio
     async def test_redis_connection(self, redis_backend: RedisSessionBackend):
         """Test that Redis connection works."""
-        # Simple operation to verify connection
         await redis_backend.mark_attacker("test_session")
         assert await redis_backend.is_attacker("test_session") is True
 
@@ -272,7 +240,6 @@ class TestRedisBackend:
 
         await backend.mark_attacker("session_1")
 
-        # Verify key exists with correct prefix
         client = await backend._get_client()
         keys = []
         async for key in client.scan_iter(match="test_prefix:*"):
@@ -287,8 +254,7 @@ class TestRedisBackend:
     @pytest.mark.asyncio
     async def test_redis_ttl_automatic(self, redis_backend: RedisSessionBackend):
         """Test that Redis handles TTL automatically."""
-        # Redis should handle expiration automatically
-        # cleanup_expired should return 0
+        # Redis expires keys server-side, so the manual sweep is a no-op and returns 0
         deleted = await redis_backend.cleanup_expired(ttl_seconds=60)
         assert deleted == 0
 
@@ -304,15 +270,13 @@ class TestSQLiteBackend:
             db_path = Path(f.name)
 
         try:
-            # Create first backend instance and add data
             backend1 = SQLiteSessionBackend(db_path=db_path, ttl=3600)
             await backend1.mark_attacker("session_1")
             await backend1.record_tool_call("session_1", "tool1", datetime.utcnow())
 
-            # Create second backend instance (simulates restart)
+            # second instance over the same file simulates a process restart
             backend2 = SQLiteSessionBackend(db_path=db_path, ttl=3600)
 
-            # Data should still be there
             assert await backend2.is_attacker("session_1") is True
             history = await backend2.get_tool_history("session_1")
             assert len(history) == 1
@@ -325,26 +289,23 @@ class TestSQLiteBackend:
     @pytest.mark.asyncio
     async def test_sqlite_cleanup_expired(self, sqlite_backend: SQLiteSessionBackend):
         """Test manual cleanup of expired sessions in SQLite."""
-        # Add some sessions
         await sqlite_backend.mark_attacker("session_1")
         await sqlite_backend.mark_attacker("session_2")
 
-        # Cleanup with very short TTL (should remove all)
+        # ttl_seconds=0 forces every session to count as expired
         deleted = await sqlite_backend.cleanup_expired(ttl_seconds=0)
 
-        # Should have deleted sessions
         assert deleted >= 2
 
     @pytest.mark.asyncio
     async def test_sqlite_vacuum(self, sqlite_backend: SQLiteSessionBackend):
         """Test SQLite vacuum operation."""
-        # Add and remove data to create fragmentation
+        # bulk insert then clear leaves free pages for vacuum to reclaim
         for i in range(100):
             await sqlite_backend.mark_attacker(f"session_{i}")
 
         await sqlite_backend.clear()
 
-        # Vacuum should not raise errors
         await sqlite_backend.vacuum()
 
 

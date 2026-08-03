@@ -118,7 +118,6 @@ class TestAlertRulesEngine:
         config = AlertConfig(rules=[rule])
         engine = AlertRulesEngine(config)
         
-        # Should match
         event = create_test_event(threat_level="high")
         alerts = engine.evaluate_attack_event(event)
         assert len(alerts) == 1
@@ -138,12 +137,11 @@ class TestAlertRulesEngine:
         config = AlertConfig(rules=[rule])
         engine = AlertRulesEngine(config)
         
-        # Should not match (too low)
+        # "high" ranks below the rule's "critical" minimum
         event = create_test_event(threat_level="high")
         alerts = engine.evaluate_attack_event(event)
         assert len(alerts) == 0
-        
-        # Should match
+
         event = create_test_event(threat_level="critical")
         alerts = engine.evaluate_attack_event(event)
         assert len(alerts) == 1
@@ -162,12 +160,10 @@ class TestAlertRulesEngine:
         config = AlertConfig(rules=[rule])
         engine = AlertRulesEngine(config)
         
-        # Should not match
         event = create_test_event(category="exfiltration")
         alerts = engine.evaluate_attack_event(event)
         assert len(alerts) == 0
-        
-        # Should match
+
         event = create_test_event(category="rce")
         alerts = engine.evaluate_attack_event(event)
         assert len(alerts) == 1
@@ -189,11 +185,10 @@ class TestAlertRulesEngine:
         
         event = create_test_event()
         
-        # First alert should go through
         alerts1 = engine.evaluate_attack_event(event)
         assert len(alerts1) == 1
-        
-        # Second alert should be deduplicated
+
+        # same event within the dedup window is suppressed
         alerts2 = engine.evaluate_attack_event(event)
         assert len(alerts2) == 0
 
@@ -213,13 +208,12 @@ class TestAlertRulesEngine:
         config = AlertConfig(rules=[rule])
         engine = AlertRulesEngine(config)
         
-        # First two should go through
         for i in range(2):
             event = create_test_event(event_id=f"evt_{i}")
             alerts = engine.evaluate_attack_event(event)
             assert len(alerts) == 1
-        
-        # Third should be rate limited
+
+        # exceeds rate_limit_count=2 within the window
         event = create_test_event(event_id="evt_3")
         alerts = engine.evaluate_attack_event(event)
         assert len(alerts) == 0
@@ -239,17 +233,16 @@ class TestAlertRulesEngine:
         config = AlertConfig(rules=[rule])
         engine = AlertRulesEngine(config)
         
-        # Should match
         pattern = create_test_pattern(pattern_type="coordinated", confidence=0.85)
         alerts = engine.evaluate_pattern(pattern)
         assert len(alerts) == 1
-        
-        # Should not match (wrong type)
+
+        # "campaign" is not in the rule's pattern_types
         pattern = create_test_pattern(pattern_type="campaign", confidence=0.85)
         alerts = engine.evaluate_pattern(pattern)
         assert len(alerts) == 0
-        
-        # Should not match (low confidence)
+
+        # 0.7 falls under min_confidence=0.8
         pattern = create_test_pattern(pattern_type="coordinated", confidence=0.7)
         alerts = engine.evaluate_pattern(pattern)
         assert len(alerts) == 0
@@ -285,18 +278,15 @@ class TestAlertRulesEngine:
         config = AlertConfig(rules=[rule])
         engine = AlertRulesEngine(config)
         
-        # Generate some alerts
         for i in range(5):
             event = create_test_event(event_id=f"evt_{i}")
             engine.evaluate_attack_event(event)
-        
-        # Should have tracking data
+
         assert len(engine._recent_alerts) > 0
-        
-        # Cleanup (with 0 hours to remove everything)
+
+        # max_age_hours=0 treats every tracked alert as stale
         engine.cleanup_old_tracking_data(max_age_hours=0)
-        
-        # Should be empty
+
         assert len(engine._recent_alerts) == 0
 
 

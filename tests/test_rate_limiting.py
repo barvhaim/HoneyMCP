@@ -25,42 +25,37 @@ class TestSessionStoreRateLimit:
         store = SessionStore()
         for _ in range(3):
             assert store.check_rate_limit("s1", max_per_minute=3)
-        # 4th call exceeds limit
         assert not store.check_rate_limit("s1", max_per_minute=3)
 
     def test_timestamps_pruned_after_60s(self):
         store = SessionStore()
         base = time.monotonic()
 
-        # Fill up to the limit
         for _ in range(3):
             store.check_rate_limit("s1", max_per_minute=3)
 
-        # Advance 61 seconds — old timestamps should be pruned
+        # 61s is past the 60s sliding window, so the earlier timestamps are pruned
         with patch("honeymcp.core.fingerprinter.time") as mock_time:
             mock_time.monotonic.return_value = base + 61
             assert store.check_rate_limit("s1", max_per_minute=3)
 
     def test_independent_sessions(self):
         store = SessionStore()
-        # Exhaust limit for s1
         for _ in range(2):
             store.check_rate_limit("s1", max_per_minute=2)
         assert not store.check_rate_limit("s1", max_per_minute=2)
 
-        # s2 should still be allowed
         assert store.check_rate_limit("s2", max_per_minute=2)
 
     def test_rate_limit_resets_after_time(self):
         store = SessionStore()
         base = time.monotonic()
 
-        # Exhaust limit
         for _ in range(2):
             store.check_rate_limit("s1", max_per_minute=2)
         assert not store.check_rate_limit("s1", max_per_minute=2)
 
-        # After 61 seconds, limit resets
+        # 61s is past the 60s window, so the limit resets
         with patch("honeymcp.core.fingerprinter.time") as mock_time:
             mock_time.monotonic.return_value = base + 61
             assert store.check_rate_limit("s1", max_per_minute=2)
@@ -74,10 +69,9 @@ class TestSessionStoreRateLimit:
             store.check_rate_limit("s1", max_per_minute=2)
         assert not store.check_rate_limit("s1", max_per_minute=2)
 
-        # Session TTL expires (> 5s)
+        # 6s exceeds the store's ttl=5, so the whole session entry is dropped
         with patch("honeymcp.core.fingerprinter.time") as mock_time:
             mock_time.monotonic.return_value = base + 6
-            # Should start fresh — allowed
             assert store.check_rate_limit("s1", max_per_minute=2)
 
     def test_clear_resets_rate_limits(self):
@@ -181,13 +175,11 @@ class TestMiddlewareRateLimit:
         )
 
         with patch("honeymcp.core.middleware.resolve_session_id", return_value=self.FIXED_SESSION):
-            # First 2 calls should pass through
             for _ in range(2):
                 result = await server.call_tool("echo", {"msg": "hi"})
                 if hasattr(result, "meta") and result.meta:
                     assert not result.meta.get("is_error", False)
 
-            # 3rd call should be blocked
             with pytest.raises(ToolError, match="Rate limit exceeded"):
                 await server.call_tool("echo", {"msg": "hi"})
 
@@ -215,10 +207,9 @@ class TestMiddlewareRateLimit:
         )
 
         with patch("honeymcp.core.middleware.resolve_session_id", return_value=self.FIXED_SESSION):
-            # First call: within limit
             await server.call_tool("echo", {"msg": "hi"})
 
-            # Second call: exceeds limit, should sleep
+            # this second call exceeds max_calls_per_minute=1 and should be throttled
             with patch("honeymcp.core.middleware.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
                 await server.call_tool("echo", {"msg": "hi"})
                 mock_sleep.assert_awaited_once_with(2.0)
@@ -246,7 +237,6 @@ class TestMiddlewareRateLimit:
         )
 
         with patch("honeymcp.core.middleware.resolve_session_id", return_value=self.FIXED_SESSION):
-            # Should be able to make many calls without issue
             for _ in range(50):
                 result = await server.call_tool("echo", {"msg": "hi"})
                 if hasattr(result, "meta") and result.meta:

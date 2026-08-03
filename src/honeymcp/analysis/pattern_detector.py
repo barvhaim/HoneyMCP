@@ -84,11 +84,9 @@ class PatternDetector:
             seen_event_sets.add(event_key)
             unique_sessions = set(e.session_id for e in bucket_events)
 
-            # Check if we have enough sessions for coordination
             if len(unique_sessions) < self.coordinated_threshold:
                 continue
 
-            # Analyze tool usage patterns
             tool_usage: Dict[str, int] = defaultdict(int)
             session_tools: Dict[str, Set[str]] = defaultdict(set)
 
@@ -113,7 +111,6 @@ class PatternDetector:
             session_count_score = min(1.0, len(unique_sessions) / self.coordinated_threshold)
             tool_overlap_score = min(1.0, len(common_tools) / 3)
 
-            # Check time clustering
             timestamps = [e.timestamp for e in bucket_events]
             time_span = (max(timestamps) - min(timestamps)).total_seconds()
             time_cluster_score = max(0.0, 1.0 - (time_span / 3600))  # Tighter = higher
@@ -122,7 +119,6 @@ class PatternDetector:
                 session_count_score * 0.4 + tool_overlap_score * 0.3 + time_cluster_score * 0.3
             )
 
-            # Determine severity based on session count and tools
             if len(unique_sessions) >= 5 or len(common_tools) >= 3:
                 severity = "critical"
             elif len(unique_sessions) >= 3:
@@ -190,20 +186,16 @@ class PatternDetector:
         if not events:
             return patterns
 
-        # Group events by session
         session_events: Dict[str, List[AttackFingerprint]] = defaultdict(list)
         for event in events:
             session_events[event.session_id].append(event)
 
-        # Analyze each session for campaign behavior
         for session_id, session_events_list in session_events.items():
             if len(session_events_list) < self.campaign_min_events:
                 continue
 
-            # Sort by timestamp
             sorted_events = sorted(session_events_list, key=lambda e: e.timestamp)
 
-            # Calculate duration
             duration = sorted_events[-1].timestamp - sorted_events[0].timestamp
             if len(sorted_events) > 1:
                 avg_interval = duration / (len(sorted_events) - 1)
@@ -219,12 +211,10 @@ class PatternDetector:
             if duration < self.campaign_min_duration:
                 continue
 
-            # Analyze attack progression
             tool_sequence = [e.ghost_tool_called for e in sorted_events]
             unique_tools = set(tool_sequence)
             unique_categories = set(e.attack_category for e in sorted_events)
 
-            # Calculate attack velocity (attacks per hour)
             duration_hours = duration.total_seconds() / 3600
             velocity = len(sorted_events) / duration_hours if duration_hours > 0 else 0
 
@@ -238,7 +228,6 @@ class PatternDetector:
 
             confidence = duration_score * 0.3 + event_count_score * 0.3 + diversity_score * 0.4
 
-            # Determine severity
             if duration_hours >= 48 or len(sorted_events) >= 15:
                 severity = "critical"
             elif duration_hours >= 24 or len(sorted_events) >= 10:
@@ -310,7 +299,6 @@ class PatternDetector:
         if len(events) < 10:  # Need sufficient data for statistical analysis
             return patterns
 
-        # Analyze tool usage distribution
         tool_counts: Dict[str, int] = defaultdict(int)
         for event in events:
             tool_counts[event.ghost_tool_called] += 1
@@ -318,7 +306,6 @@ class PatternDetector:
         total_events = len(events)
         avg_usage = total_events / len(tool_counts) if tool_counts else 0
 
-        # Calculate standard deviation
         if len(tool_counts) > 1:
             variance = sum((count - avg_usage) ** 2 for count in tool_counts.values()) / len(
                 tool_counts
@@ -337,14 +324,11 @@ class PatternDetector:
             if count <= threshold and dominance_ratio < 0.5:
                 continue
 
-            # This tool is used anomalously often
             tool_events = [e for e in events if e.ghost_tool_called == tool]
 
-            # Calculate confidence based on deviation magnitude
             deviation = (count - avg_usage) / std_dev if std_dev > 0 else count / avg_usage
             confidence = min(0.95, 0.5 + (deviation / 10))
 
-            # Determine severity
             if deviation >= 5:
                 severity = "high"
             elif deviation >= 3:
@@ -415,25 +399,20 @@ class PatternDetector:
         Raises:
             ValueError: If no events found for session
         """
-        # Filter to session events
         session_events = [e for e in events if e.session_id == session_id]
 
         if not session_events:
             raise ValueError(f"No events found for session {session_id}")
 
-        # Sort by timestamp
         sorted_events = sorted(session_events, key=lambda e: e.timestamp)
 
-        # Calculate basic metrics
         total_attacks = len(session_events)
         unique_tools = set(e.ghost_tool_called for e in session_events)
 
-        # Count attacks by category
         category_dist: Dict[str, int] = defaultdict(int)
         for event in session_events:
             category_dist[event.attack_category] += 1
 
-        # Calculate attack velocity
         duration = (sorted_events[-1].timestamp - sorted_events[0].timestamp).total_seconds() / 3600
         velocity = total_attacks / duration if duration > 0 else total_attacks
 
@@ -449,17 +428,14 @@ class PatternDetector:
             tool_diversity_score * 0.4 + category_diversity_score * 0.3 + persistence_score * 0.3
         )
 
-        # Build behavioral fingerprint
         tool_sequence = [e.ghost_tool_called for e in sorted_events]
 
-        # Find preferred categories (sorted by count)
         preferred_categories = sorted(
             category_dist.items(),
             key=lambda x: x[1],
             reverse=True,
         )
 
-        # Calculate timing patterns
         if len(sorted_events) > 1:
             time_deltas = [
                 (sorted_events[i + 1].timestamp - sorted_events[i].timestamp).total_seconds()

@@ -191,7 +191,6 @@ class HoneyMCPConfig(BaseModel):
         storage = data.get("storage", {})
         if "event_path" in storage:
             path_str = storage["event_path"]
-            # Expand ~ to home directory
             config_dict["event_storage_path"] = Path(os.path.expanduser(path_str))
         if "max_age_days" in storage:
             config_dict["max_age_days"] = storage["max_age_days"]
@@ -265,5 +264,4 @@ class HoneyMCPConfig(BaseModel):
             if config_path.exists():
                 return cls.from_yaml(config_path)
 
-        # Return default config
         return cls()

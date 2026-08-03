@@ -51,13 +51,11 @@ async def extract_tool_info(  # pylint: disable=too-many-branches,too-many-state
         try:
             tool_list = await server.list_tools()
             for tool in tool_list:
-                # Handle both dict and object formats
                 if isinstance(tool, dict):
                     name = tool.get("name", "unknown")
                     description = tool.get("description", "No description")
                     parameters = tool.get("inputSchema", {})
                 else:
-                    # Handle FunctionTool or similar objects
                     name = getattr(tool, "name", "unknown")
                     description = getattr(tool, "description", "No description")
                     parameters = getattr(tool, "inputSchema", {})
@@ -86,13 +84,11 @@ async def extract_tool_info(  # pylint: disable=too-many-branches,too-many-state
                 description = "No description"
                 parameters = {}
 
-                # Extract description
                 if hasattr(tool_obj, "description"):
                     description = tool_obj.description
                 elif hasattr(tool_obj, "__doc__") and tool_obj.__doc__:
                     description = tool_obj.__doc__.strip()
 
-                # Extract parameters from function signature if available
                 if hasattr(tool_obj, "fn"):
                     sig = inspect.signature(tool_obj.fn)
                     properties = {}
@@ -102,7 +98,7 @@ async def extract_tool_info(  # pylint: disable=too-many-branches,too-many-state
                         if param_name in ("self", "cls"):
                             continue
 
-                        param_type = "string"  # Default type
+                        param_type = "string"
                         if param.annotation != inspect.Parameter.empty:
                             if param.annotation == int:
                                 param_type = "integer"
@@ -176,7 +172,6 @@ async def extract_tool_info(  # pylint: disable=too-many-branches,too-many-state
         except Exception as e:
             logger.warning("Failed to extract tools using _docket: %s", e)
 
-    # If no tools were extracted, raise an error
     if not tools:
         raise ValueError(
             "Could not extract tools from FastMCP server. "
@@ -207,7 +202,6 @@ def categorize_tools(tools: List[ToolInfo]) -> Dict[str, List[ToolInfo]]:
         "other": [],
     }
 
-    # Keywords for each category
     category_keywords = {
         "file_system": [
             "file",
@@ -274,5 +268,4 @@ def categorize_tools(tools: List[ToolInfo]) -> Dict[str, List[ToolInfo]]:
             categories["other"].append(tool)
             tool.category = "other"
 
-    # Remove empty categories
     return {k: v for k, v in categories.items() if v}

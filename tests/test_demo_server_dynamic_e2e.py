@@ -17,16 +17,13 @@ def _llm_configured() -> bool:
     load_dotenv(".env.honeymcp")
     load_dotenv()
 
-    # Check for watsonx credentials (primary LLM provider)
     if os.getenv("WATSONX_API_KEY") and os.getenv("WATSONX_PROJECT_ID"):
         return True
-    # Check for OpenAI credentials
     if os.getenv("OPENAI_API_KEY"):
         return True
-    # Check for RITS credentials
     if os.getenv("RITS_API_KEY"):
         return True
-    # Check for generic LiteLLM config
+    # generic LiteLLM config
     if os.getenv("LLM_API_KEY"):
         return True
     return False
@@ -66,11 +63,9 @@ def test_demo_server_dynamic_tools_with_and_without_honeypot() -> None:
     tools_without = _list_tools(disable_honeypot=True, force_static=False)
     tools_with_dynamic = _list_tools(disable_honeypot=False, force_static=False)
 
-    # Verify base tools exist when honeypot is disabled
     for tool in BASE_TOOLS:
         assert tool in tools_without, f"Base tool {tool} missing when honeypot disabled"
 
-    # Verify base tools still exist when honeypot is enabled with dynamic tools
     for tool in BASE_TOOLS:
         assert tool in tools_with_dynamic, f"Base tool {tool} missing with dynamic honeypot"
 
@@ -80,7 +75,6 @@ def test_demo_server_dynamic_tools_with_and_without_honeypot() -> None:
         len(tools_without) == 5
     ), f"Expected 5 base tools, got {len(tools_without)}: {tools_without}"
 
-    # The dynamic ghost tools should be new tools not in the base set
     ghost_tools = [t for t in tools_with_dynamic if t not in BASE_TOOLS]
 
     if any(static_tool in ghost_tools for static_tool in STATIC_GHOST_TOOLS):
@@ -88,9 +82,7 @@ def test_demo_server_dynamic_tools_with_and_without_honeypot() -> None:
             "LLM provider unavailable or returned invalid output; demo server fell back to static tools"
         )
 
-    # Verify we got dynamic tools, not static fallback
-    # Static tools are ["list_cloud_secrets", "execute_shell_command"]
-    # Dynamic tools should have different names
+    # seeing the static names means generation fell back, so there is nothing to assert on
     for static_tool in STATIC_GHOST_TOOLS:
         if static_tool in ghost_tools:
             pytest.skip(
@@ -103,7 +95,6 @@ def test_demo_server_dynamic_tools_with_and_without_honeypot() -> None:
     ), f"Expected 8 tools (5 base + 3 dynamic ghost), got {len(tools_with_dynamic)}: {tools_with_dynamic}"
     assert len(ghost_tools) == 3, f"Expected 3 ghost tools, got {len(ghost_tools)}: {ghost_tools}"
 
-    # Ghost tools should not be base tools (no name collisions)
     for ghost in ghost_tools:
         assert ghost not in BASE_TOOLS, f"Ghost tool {ghost} collides with base tool"
 
@@ -112,15 +103,12 @@ def test_demo_server_static_fallback() -> None:
     """Test that static ghost tools are used when force_static is enabled."""
     tools_with_static = _list_tools(disable_honeypot=False, force_static=True)
 
-    # Verify base tools exist
     for tool in BASE_TOOLS:
         assert tool in tools_with_static, f"Base tool {tool} missing with static honeypot"
 
-    # Static mode uses list_cloud_secrets and execute_shell_command
     assert "list_cloud_secrets" in tools_with_static
     assert "execute_shell_command" in tools_with_static
 
-    # Should have 5 base + 2 static ghost = 7 tools
     assert (
         len(tools_with_static) == 7
     ), f"Expected 7 tools (5 base + 2 static ghost), got {len(tools_with_static)}: {tools_with_static}"

@@ -14,11 +14,9 @@ class ToolEffectivenessMetric(BaseModel):
 
     tool_name: str = Field(description="Name of the ghost tool")
 
-    # Usage statistics
     trigger_count: int = Field(default=0, description="Number of times triggered")
     unique_sessions: int = Field(default=0, description="Unique sessions that used this tool")
 
-    # Timing metrics
     avg_time_to_trigger: float = Field(
         default=0.0, description="Average time from session start to first trigger (seconds)"
     )
@@ -26,12 +24,10 @@ class ToolEffectivenessMetric(BaseModel):
         default=0.0, description="Total time attackers spent with this tool (seconds)"
     )
 
-    # Threat detection
     high_threat_triggers: int = Field(
         default=0, description="Triggers that resulted in high/critical threat level"
     )
 
-    # Effectiveness scores (0.0 - 1.0)
     attractiveness_score: float = Field(
         default=0.0, ge=0.0, le=1.0, description="How attractive the tool is to attackers"
     )
@@ -45,7 +41,6 @@ class ToolEffectivenessMetric(BaseModel):
         default=0.0, ge=0.0, le=1.0, description="Overall effectiveness score"
     )
 
-    # Metadata
     first_seen: datetime = Field(description="When tool was first deployed")
     last_triggered: Optional[datetime] = Field(
         default=None, description="Last time tool was triggered"
@@ -98,20 +93,17 @@ class ToolGenerationHint(BaseModel):
 
     session_id: str = Field(description="Session that generated this hint")
 
-    # Observed patterns
     attempted_tools: List[str] = Field(description="Tools the attacker tried to use")
     attack_categories: List[str] = Field(description="Attack categories observed")
     sophistication_level: str = Field(
         description="Estimated attacker sophistication: low, medium, high"
     )
 
-    # Generation suggestions
     suggested_tool_types: List[str] = Field(
         description="Types of tools that might attract this attacker"
     )
     suggested_categories: List[str] = Field(description="Categories to focus on")
 
-    # Context
     timestamp: datetime = Field(description="When hint was generated")
     confidence: float = Field(ge=0.0, le=1.0, description="Confidence in this hint")
 
@@ -122,7 +114,6 @@ class AdaptiveToolRecommendation(BaseModel):
     recommendation_id: str = Field(description="Unique recommendation ID")
     generated_at: datetime = Field(description="When recommendation was generated")
 
-    # Actions
     tools_to_add: List[str] = Field(default_factory=list, description="Tools to add to catalog")
     tools_to_remove: List[str] = Field(
         default_factory=list, description="Tools to remove from catalog"
@@ -131,13 +122,11 @@ class AdaptiveToolRecommendation(BaseModel):
         default_factory=dict, description="Tools to modify (tool_name -> {field: new_value})"
     )
 
-    # Reasoning
     rationale: str = Field(description="Explanation for recommendations")
     expected_improvement: float = Field(
         ge=0.0, le=1.0, description="Expected improvement in effectiveness"
     )
 
-    # Metadata
     based_on_sessions: List[str] = Field(description="Sessions used for analysis")
     strategy_used: OptimizationStrategy = Field(description="Strategy used for optimization")
 
@@ -147,12 +136,10 @@ class AttackerProfile(BaseModel):
 
     session_id: str = Field(description="Session identifier")
 
-    # Behavior patterns
     tool_preferences: List[str] = Field(description="Tools this attacker prefers")
     attack_sequence: List[str] = Field(description="Typical attack sequence")
     timing_pattern: str = Field(description="Attack timing: rapid, methodical, sporadic")
 
-    # Sophistication indicators
     sophistication_score: float = Field(
         ge=0.0, le=1.0, description="Estimated sophistication level"
     )
@@ -161,13 +148,11 @@ class AttackerProfile(BaseModel):
         default=False, description="Whether attacker appears to use automation"
     )
 
-    # Personalization
     recommended_tools: List[str] = Field(description="Tools likely to attract this attacker")
     bait_chain: List[str] = Field(
         default_factory=list, description="Sequence of tools to lead attacker deeper"
     )
 
-    # Metadata
     created_at: datetime = Field(description="Profile creation time")
     last_updated: datetime = Field(description="Last profile update")
     confidence: float = Field(ge=0.0, le=1.0, description="Confidence in profile accuracy")
@@ -179,18 +164,15 @@ class ABTestVariant(BaseModel):
     variant_id: str = Field(description="Variant identifier")
     tool_name: str = Field(description="Tool being tested")
 
-    # Variant details
     description: str = Field(description="Tool description for this variant")
     parameters: Dict[str, str] = Field(default_factory=dict, description="Parameter descriptions")
 
-    # Test results
     impressions: int = Field(default=0, description="Number of times shown to attackers")
     triggers: int = Field(default=0, description="Number of times triggered")
     conversion_rate: float = Field(
         default=0.0, ge=0.0, le=1.0, description="Trigger rate (triggers / impressions)"
     )
 
-    # Metadata
     created_at: datetime = Field(description="Variant creation time")
     is_control: bool = Field(default=False, description="Whether this is the control variant")
 
@@ -201,14 +183,12 @@ class ABTest(BaseModel):
     test_id: str = Field(description="Test identifier")
     tool_name: str = Field(description="Tool being tested")
 
-    # Test configuration
     variants: List[ABTestVariant] = Field(description="Test variants")
     start_time: datetime = Field(description="Test start time")
     end_time: Optional[datetime] = Field(
         default=None, description="Test end time (None if ongoing)"
     )
 
-    # Results
     winner: Optional[str] = Field(
         default=None, description="Winning variant ID (if test completed)"
     )
@@ -216,7 +196,6 @@ class ABTest(BaseModel):
         default=0.0, ge=0.0, le=1.0, description="Statistical confidence in results"
     )
 
-    # Metadata
     status: str = Field(default="running", description="Test status: running, completed, cancelled")
     min_sample_size: int = Field(default=100, description="Minimum samples needed per variant")
 
@@ -227,17 +206,14 @@ class CatalogSnapshot(BaseModel):
     snapshot_id: str = Field(description="Snapshot identifier")
     timestamp: datetime = Field(description="Snapshot timestamp")
 
-    # Catalog state
     active_tools: List[str] = Field(description="Active tool names")
     tool_metrics: Dict[str, ToolEffectivenessMetric] = Field(description="Metrics for each tool")
 
-    # Performance
     overall_effectiveness: float = Field(
         ge=0.0, le=1.0, description="Overall catalog effectiveness"
     )
     avg_tool_score: float = Field(ge=0.0, le=1.0, description="Average tool effectiveness score")
 
-    # Metadata
     optimization_strategy: OptimizationStrategy = Field(
         description="Strategy in use at snapshot time"
     )

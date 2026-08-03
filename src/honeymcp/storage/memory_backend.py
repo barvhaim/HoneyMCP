@@ -69,7 +69,6 @@ class InMemorySessionBackend(SessionBackend):
         """Remove all expired entries and enforce max_size."""
         now = time.monotonic()
 
-        # Remove expired entries
         self._attacker_detected = {
             k: v for k, v in self._attacker_detected.items() if (now - v[1]) <= self._ttl
         }
@@ -80,7 +79,6 @@ class InMemorySessionBackend(SessionBackend):
             k: v for k, v in self._call_timestamps.items() if (now - v[1]) <= self._ttl
         }
 
-        # If still over max_size, evict oldest entries (LRU)
         for store in (self._attacker_detected, self._tool_history, self._call_timestamps):
             if len(store) > self._max_size:
                 sorted_keys = sorted(store, key=lambda k: store[k][1])
@@ -180,7 +178,6 @@ class InMemorySessionBackend(SessionBackend):
         with self._lock:
             now = time.monotonic()
 
-            # Count sessions before cleanup
             before_count = len(
                 set(
                     list(self._attacker_detected.keys())
@@ -189,7 +186,6 @@ class InMemorySessionBackend(SessionBackend):
                 )
             )
 
-            # Remove expired entries using provided TTL
             self._attacker_detected = {
                 k: v for k, v in self._attacker_detected.items() if (now - v[1]) <= ttl_seconds
             }
@@ -200,7 +196,6 @@ class InMemorySessionBackend(SessionBackend):
                 k: v for k, v in self._call_timestamps.items() if (now - v[1]) <= ttl_seconds
             }
 
-            # Count sessions after cleanup
             after_count = len(
                 set(
                     list(self._attacker_detected.keys())
@@ -215,7 +210,6 @@ class InMemorySessionBackend(SessionBackend):
         """Get the total number of tracked sessions."""
         with self._lock:
             self._evict_expired()
-            # Count unique session IDs across all stores
             keys = (
                 set(self._attacker_detected) | set(self._tool_history) | set(self._call_timestamps)
             )

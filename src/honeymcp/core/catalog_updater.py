@@ -18,7 +18,6 @@ class CatalogUpdater:
             project_root: Root directory of HoneyMCP project. If None, auto-detects.
         """
         if project_root is None:
-            # Auto-detect project root
             current = Path(__file__).resolve()
             while current.parent != current:
                 if (current / "src" / "honeymcp").exists():
@@ -44,32 +43,28 @@ class CatalogUpdater:
         """
         errors = []
 
-        # Step 1: Validate tool doesn't already exist
         if self._tool_exists(tool_spec.name):
             errors.append(f"Tool '{tool_spec.name}' already exists in catalog")
             return False, errors
 
-        # Step 2: Read current ghost_tools.py
         try:
             content = self.ghost_tools_path.read_text()
         except Exception as e:
             errors.append(f"Failed to read ghost_tools.py: {e}")
             return False, errors
 
-        # Step 3: Add response generator function
         updated_content = self._add_response_generator(content, response_func_code)
 
-        # Step 4: Add tool to GHOST_TOOL_CATALOG
         updated_content = self._add_to_catalog(updated_content, tool_spec)
 
-        # Step 5: Validate syntax
+        # Parse before writing: a bad edit would otherwise leave ghost_tools.py
+        # syntactically broken and the whole package unimportable.
         try:
             ast.parse(updated_content)
         except SyntaxError as e:
             errors.append(f"Generated code has syntax error: {e}")
             return False, errors
 
-        # Step 6: Write updated file
         try:
             self.ghost_tools_path.write_text(updated_content)
         except Exception as e:
@@ -89,27 +84,24 @@ class CatalogUpdater:
         """
         errors = []
 
-        # Step 1: Read current middleware.py
         try:
             content = self.middleware_path.read_text()
         except Exception as e:
             errors.append(f"Failed to read middleware.py: {e}")
             return False, errors
 
-        # Step 2: Generate handler code
         handler_code = self._generate_handler_code(tool_spec)
 
-        # Step 3: Insert handler before "else:" clause
         updated_content = self._insert_handler(content, handler_code)
 
-        # Step 4: Validate syntax
+        # Parse before writing: a bad edit would otherwise leave middleware.py
+        # syntactically broken and the whole package unimportable.
         try:
             ast.parse(updated_content)
         except SyntaxError as e:
             errors.append(f"Generated middleware code has syntax error: {e}")
             return False, errors
 
-        # Step 5: Write updated file
         try:
             self.middleware_path.write_text(updated_content)
         except Exception as e:
@@ -132,10 +124,10 @@ class CatalogUpdater:
         if matches:
             last_match = matches[-1]
             insert_pos = last_match.end()
-            # Add new function after last one
             return content[:insert_pos] + "\n\n" + func_code.rstrip() + "\n" + content[insert_pos:]
         else:
-            # No functions found, add before catalog
+            # No generator functions present yet: fall back to inserting above
+            # the catalog, which must come after the functions it references.
             catalog_pos = content.find("# Ghost tool catalog")
             if catalog_pos > 0:
                 return content[:catalog_pos] + func_code.rstrip() + "\n\n" + content[catalog_pos:]
@@ -144,11 +136,10 @@ class CatalogUpdater:
 
     def _add_to_catalog(self, content: str, tool_spec: GhostToolSpec) -> str:
         """Add tool entry to GHOST_TOOL_CATALOG dictionary."""
-        # Generate catalog entry
         catalog_entry = self._generate_catalog_entry(tool_spec)
 
-        # Find the closing brace of GHOST_TOOL_CATALOG
-        # Look for the last tool entry before the closing brace
+        # Matches the last tool entry immediately before GHOST_TOOL_CATALOG's
+        # closing brace, so the new entry is appended inside the dict.
         pattern = r'(    "[\w_]+": GhostToolSpec\(.*?\),)\n(\})'
 
         def replacer(match):
@@ -162,7 +153,6 @@ class CatalogUpdater:
 
     def _generate_catalog_entry(self, tool_spec: GhostToolSpec) -> str:
         """Generate catalog entry code for tool."""
-        # Format parameters as Python dict
         params_str = str(tool_spec.parameters).replace("'", '"')
 
         entry = f"""    "{tool_spec.name}": GhostToolSpec(
@@ -178,11 +168,9 @@ class CatalogUpdater:
 
     def _generate_handler_code(self, tool_spec: GhostToolSpec) -> str:
         """Generate middleware handler code for tool."""
-        # Extract parameters
         properties = tool_spec.parameters.get("properties", {})
         required = tool_spec.parameters.get("required", [])
 
-        # Build parameter list
         params = []
         for param_name, param_spec in properties.items():
             param_type = self._python_type_from_json_type(param_spec.get("type", "string"))
@@ -194,7 +182,6 @@ class CatalogUpdater:
 
         params_str = ", ".join(params) if params else ""
 
-        # Build args dict
         if params:
             args_dict_lines = [
                 f'                {{"{p.split(":")[0].strip()}": {p.split(":")[0].strip()}}}'
@@ -254,7 +241,8 @@ class CatalogUpdater:
 
     def _insert_handler(self, content: str, handler_code: str) -> str:
         """Insert handler code before the final else clause."""
-        # Find the last "elif ghost_spec.name ==" before "else:"
+        # Matches the last "elif ghost_spec.name ==" branch before the final
+        # else, so the new handler lands inside the dispatch chain.
         pattern = r'(    elif ghost_spec\.name == "[\w_]+":\n.*?return ghost_spec\.response_generator\(.*?\)\n)\n(    else:\n        raise ValueError)'
 
         def replacer(match):
@@ -280,13 +268,11 @@ class CatalogUpdater:
         """
         all_errors = []
 
-        # Step 1: Add to ghost_tools.py
         success, errors = self.add_tool_to_catalog(tool_spec, response_func_code)
         if not success:
             all_errors.extend(errors)
             return False, all_errors
 
-        # Step 2: Add to middleware.py
         success, errors = self.add_tool_to_middleware(tool_spec)
         if not success:
             all_errors.extend(errors)

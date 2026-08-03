@@ -23,7 +23,6 @@ import os
 from fastmcp import FastMCP
 from honeymcp import honeypot, ProtectionMode
 
-# Create MCP server
 mcp = FastMCP("HoneyMCP Banking Demo Server")
 
 

@@ -28,8 +28,7 @@ class TestNewHoneypotTools:
         """Verify each tool has correct specification structure."""
         for tool_name in new_tool_names:
             spec = GHOST_TOOL_CATALOG[tool_name]
-            
-            # Check required attributes
+
             assert spec.name == tool_name
             assert spec.description is not None and len(spec.description) > 0
             assert spec.parameters is not None
@@ -44,13 +43,12 @@ class TestNewHoneypotTools:
         """Verify response generators produce valid output."""
         for tool_name in new_tool_names:
             spec = GHOST_TOOL_CATALOG[tool_name]
-            
-            # Test with empty args
+
             response = spec.response_generator({})
             assert isinstance(response, str)
             assert len(response) > 50, f"Response too short for {tool_name}"
-            
-            # Check for realistic content
+
+            # honeypot responses must look plausible to an attacker
             assert any(keyword in response.lower() for keyword in [
                 'token', 'credential', 'secret', 'key', 'access', 
                 'warning', 'admin', 'permission'
@@ -59,8 +57,7 @@ class TestNewHoneypotTools:
     def test_kubernetes_secrets_tool(self):
         """Test list_kubernetes_secrets specifically."""
         spec = GHOST_TOOL_CATALOG['list_kubernetes_secrets']
-        
-        # Test with namespace parameter
+
         response = spec.response_generator({'namespace': 'production'})
         assert 'production' in response.lower()
         assert 'kubernetes' in response.lower()
@@ -69,8 +66,7 @@ class TestNewHoneypotTools:
     def test_session_tokens_tool(self):
         """Test dump_session_tokens specifically."""
         spec = GHOST_TOOL_CATALOG['dump_session_tokens']
-        
-        # Test with limit parameter
+
         response = spec.response_generator({'limit': 5})
         assert 'session' in response.lower()
         assert 'token' in response.lower() or 'jwt' in response.lower()
@@ -78,8 +74,7 @@ class TestNewHoneypotTools:
     def test_github_tokens_tool(self):
         """Test list_github_tokens specifically."""
         spec = GHOST_TOOL_CATALOG['list_github_tokens']
-        
-        # Test with scope parameter
+
         response = spec.response_generator({'scope': 'repo'})
         assert 'github' in response.lower() or 'gitlab' in response.lower()
         assert 'token' in response.lower()
@@ -87,8 +82,7 @@ class TestNewHoneypotTools:
     def test_2fa_disable_tool(self):
         """Test disable_2fa_requirement specifically."""
         spec = GHOST_TOOL_CATALOG['disable_2fa_requirement']
-        
-        # Test with required parameters
+
         response = spec.response_generator({
             'user_scope': 'current_user',
             'duration_minutes': 30
@@ -99,8 +93,7 @@ class TestNewHoneypotTools:
     def test_iam_role_tool(self):
         """Test assume_iam_role specifically."""
         spec = GHOST_TOOL_CATALOG['assume_iam_role']
-        
-        # Test with role_name parameter
+
         response = spec.response_generator({
             'role_name': 'AdminRole',
             'duration_hours': 12
@@ -111,8 +104,7 @@ class TestNewHoneypotTools:
     def test_audit_logs_tool(self):
         """Test export_audit_logs specifically."""
         spec = GHOST_TOOL_CATALOG['export_audit_logs']
-        
-        # Test with parameters
+
         response = spec.response_generator({
             'time_range': 'last_7_days',
             'include_sensitive': True
@@ -123,8 +115,7 @@ class TestNewHoneypotTools:
     def test_ml_model_tool(self):
         """Test dump_ml_model_weights specifically."""
         spec = GHOST_TOOL_CATALOG['dump_ml_model_weights']
-        
-        # Test with model_name parameter
+
         response = spec.response_generator({
             'model_name': 'gpt-model',
             'include_training_data': False

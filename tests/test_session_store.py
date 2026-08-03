@@ -71,7 +71,7 @@ class TestSessionStoreTTL:
         store.mark_attacker("s1")
         assert store.is_attacker("s1")
 
-        # Advance monotonic clock past TTL
+        # +2s exceeds ttl=1
         with patch("honeymcp.core.fingerprinter.time") as mock_time:
             mock_time.monotonic.return_value = time.monotonic() + 2
             assert not store.is_attacker("s1")
@@ -118,12 +118,11 @@ class TestSessionStoreMaxSize:
 
     def test_evicts_oldest_when_over_max_size(self):
         store = SessionStore(ttl=3600, max_size=3)
-        # Fill up the store and trigger a cleanup
+        # writing _CLEANUP_INTERVAL entries is what triggers the periodic sweep
         for i in range(store._CLEANUP_INTERVAL):
             sid = f"s{i}"
             store.mark_attacker(sid)
 
-        # After cleanup, only max_size entries remain
         remaining = sum(
             1
             for i in range(store._CLEANUP_INTERVAL)
@@ -150,18 +149,16 @@ class TestPeriodicCleanup:
     def test_cleanup_runs_at_interval(self):
         store = SessionStore(ttl=1)
 
-        # Insert an entry then advance time so it's expired
         store.mark_attacker("old")
         base = time.monotonic()
 
         with patch("honeymcp.core.fingerprinter.time") as mock_time:
             mock_time.monotonic.return_value = base + 2
 
-            # Write entries to trigger periodic sweep
+            # writing _CLEANUP_INTERVAL entries triggers the sweep that evicts "old"
             for i in range(store._CLEANUP_INTERVAL):
                 store.mark_attacker(f"new_{i}")
 
-            # The old entry should have been evicted by the sweep
             assert not store.is_attacker("old")
 
 

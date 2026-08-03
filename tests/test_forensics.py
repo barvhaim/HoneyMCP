@@ -96,8 +96,7 @@ class TestReplayEngine:
         assert timeline.event_count == 3
         assert len(timeline.events) == 3
         assert timeline.duration_seconds == 10.0
-        
-        # Check statistics
+
         assert len(timeline.unique_tools_used) == 3
         assert "list_secrets" in timeline.unique_tools_used
         assert "execute_command" in timeline.unique_tools_used
@@ -121,7 +120,6 @@ class TestReplayEngine:
         sample_events: List[AttackFingerprint],
     ):
         """Test timeline creation fails with events from different sessions."""
-        # Add event from different session
         different_session_event = AttackFingerprint(
             event_id="evt_999",
             timestamp=datetime.utcnow(),
@@ -151,8 +149,7 @@ class TestReplayEngine:
         
         assert replay_id.startswith("replay_")
         assert replay_id in replay_engine.list_active_replays()
-        
-        # Check initial state
+
         state = replay_engine.get_state(replay_id)
         assert state.replay_id == replay_id
         assert state.current_index == 0
@@ -170,12 +167,10 @@ class TestReplayEngine:
         timeline = await replay_engine.create_timeline(sample_events)
         replay_id = await replay_engine.start_replay(timeline)
         
-        # Play
         control = ReplayControl(action="play")
         state = await replay_engine.control_replay(replay_id, control)
         assert state.is_playing
-        
-        # Pause
+
         control = ReplayControl(action="pause")
         state = await replay_engine.control_replay(replay_id, control)
         assert not state.is_playing
@@ -190,12 +185,10 @@ class TestReplayEngine:
         timeline = await replay_engine.create_timeline(sample_events)
         replay_id = await replay_engine.start_replay(timeline)
         
-        # Seek to event 2
         control = ReplayControl(action="seek", target_index=2)
         state = await replay_engine.control_replay(replay_id, control)
         assert state.current_index == 2
-        
-        # Seek to invalid index
+
         control = ReplayControl(action="seek", target_index=999)
         with pytest.raises(ValueError, match="Invalid seek index"):
             await replay_engine.control_replay(replay_id, control)
@@ -210,7 +203,6 @@ class TestReplayEngine:
         timeline = await replay_engine.create_timeline(sample_events)
         replay_id = await replay_engine.start_replay(timeline)
         
-        # Change speed
         control = ReplayControl(action="speed", speed=ReplaySpeed.FAST_5X)
         state = await replay_engine.control_replay(replay_id, control)
         assert state.speed == ReplaySpeed.FAST_5X
@@ -225,7 +217,6 @@ class TestReplayEngine:
         timeline = await replay_engine.create_timeline(sample_events)
         replay_id = await replay_engine.start_replay(timeline)
         
-        # Stop
         control = ReplayControl(action="stop")
         state = await replay_engine.control_replay(replay_id, control)
         assert state.current_index == 0
@@ -244,16 +235,14 @@ class TestReplayEngine:
             speed=ReplaySpeed.INSTANT,  # Use instant speed for testing
         )
         
-        # Start playback
         control = ReplayControl(action="play")
         await replay_engine.control_replay(replay_id, control)
-        
-        # Wait a bit for playback to advance
+
         await asyncio.sleep(0.1)
-        
-        # Check that we've advanced
+
         state = replay_engine.get_state(replay_id)
-        # With instant speed, should complete quickly
+        # at INSTANT speed the replay may already have finished within the sleep,
+        # so either "advanced" or "no longer playing" is a pass
         assert state.current_index >= 1 or not state.is_playing
     
     @pytest.mark.asyncio
@@ -271,8 +260,7 @@ class TestReplayEngine:
         await replay_engine.stop_replay(replay_id)
         
         assert replay_id not in replay_engine.list_active_replays()
-        
-        # Should raise error when accessing stopped session
+
         with pytest.raises(ValueError, match="Replay session not found"):
             replay_engine.get_state(replay_id)
 
@@ -294,22 +282,18 @@ class TestReportGenerator:
         assert report.report_id.startswith("report_")
         assert report.session_id == "test_session_123"
         assert report.severity in ["low", "medium", "high", "critical"]
-        
-        # Check summary is generated
+
         assert len(report.summary) > 0
         assert "attack session" in report.summary.lower()
-        
-        # Check analysis
+
         assert len(report.techniques_used) > 0
         assert len(report.indicators_of_compromise) > 0
         assert len(report.recommendations) > 0
         assert len(report.mitigation_steps) > 0
-        
-        # Check MITRE mapping
+
         assert len(report.mitre_tactics) > 0
         assert len(report.mitre_techniques) > 0
-        
-        # Check tags
+
         assert len(report.tags) > 0
     
     @pytest.mark.asyncio
@@ -341,7 +325,7 @@ class TestReportGenerator:
         timeline = await replay_engine.create_timeline(sample_events)
         report = await report_generator.generate_report(timeline)
         
-        # With critical threat level and multiple events, should be high severity
+        # sample_events carry a "critical" event plus multiple steps, which floors severity at high
         assert report.severity in ["high", "critical"]
     
     @pytest.mark.asyncio
@@ -352,10 +336,8 @@ class TestReportGenerator:
         sample_events: List[AttackFingerprint],
     ):
         """Test session comparison."""
-        # Create two timelines
         timeline1 = await replay_engine.create_timeline(sample_events)
-        
-        # Create second set of events with some overlap
+
         base_time = datetime.utcnow()
         events2 = [
             AttackFingerprint(
@@ -382,21 +364,17 @@ class TestReportGenerator:
             ),
         ]
         timeline2 = await replay_engine.create_timeline(events2)
-        
-        # Compare
+
         comparison = await report_generator.compare_sessions([timeline1, timeline2])
-        
+
         assert comparison.report_id.startswith("comparison_")
         assert len(comparison.session_ids) == 2
-        
-        # Should find common tool
+
         assert "list_secrets" in comparison.common_tools
-        
-        # Should have statistics
+
         assert comparison.avg_duration > 0
         assert comparison.avg_events_per_session > 0
-        
-        # Should have sophistication scores
+
         assert len(comparison.sophistication_scores) == 2
     
     @pytest.mark.asyncio
@@ -434,8 +412,7 @@ class TestForensicsExporter:
         assert isinstance(json_output, str)
         assert "session_id" in json_output
         assert "test_session_123" in json_output
-        
-        # Should be valid JSON
+
         import json
         data = json.loads(json_output)
         assert data["session_id"] == "test_session_123"
@@ -456,12 +433,10 @@ class TestForensicsExporter:
         )
         
         assert isinstance(csv_output, str)
-        # Check CSV header
         assert "Timestamp" in csv_output
         assert "Tool Name" in csv_output
         assert "Threat Level" in csv_output
-        
-        # Check data rows
+
         lines = csv_output.strip().split("\n")
         assert len(lines) == 4  # Header + 3 events
     
@@ -484,8 +459,7 @@ class TestForensicsExporter:
         assert "<!DOCTYPE html>" in html_output
         assert "Attack Timeline" in html_output
         assert "test_session_123" in html_output
-        
-        # Check for event data
+
         assert "list_secrets" in html_output
         assert "execute_command" in html_output
     
@@ -505,17 +479,14 @@ class TestForensicsExporter:
         )
         
         assert isinstance(stix_output, str)
-        
-        # Should be valid JSON
+
         import json
         data = json.loads(stix_output)
-        
-        # Check STIX structure
+
         assert data["type"] == "bundle"
         assert "objects" in data
         assert len(data["objects"]) == 3  # One indicator per tool
-        
-        # Check indicators
+
         for obj in data["objects"]:
             assert obj["type"] == "indicator"
             assert "pattern" in obj
@@ -566,8 +537,7 @@ class TestForensicsExporter:
         assert "<!DOCTYPE html>" in html_output
         assert "Forensic Analysis Report" in html_output
         assert report.report_id in html_output
-        
-        # Check for report sections
+
         assert "Executive Summary" in html_output
         assert "Attack Analysis" in html_output
         assert "Indicators of Compromise" in html_output
@@ -604,36 +574,30 @@ class TestIntegration:
         sample_events: List[AttackFingerprint],
     ):
         """Test complete workflow from events to exported report."""
-        # 1. Create timeline
         timeline = await replay_engine.create_timeline(sample_events)
         assert timeline.event_count == 3
-        
-        # 2. Start replay
+
         replay_id = await replay_engine.start_replay(timeline)
         assert replay_id in replay_engine.list_active_replays()
-        
-        # 3. Control replay
+
         control = ReplayControl(action="play")
         state = await replay_engine.control_replay(replay_id, control)
         assert state.is_playing
-        
-        # 4. Generate report
+
         report = await report_generator.generate_report(timeline)
         assert report.session_id == timeline.session_id
-        
-        # 5. Export in multiple formats
+
         json_export = await forensics_exporter.export_timeline(
             timeline,
             ExportFormat.JSON,
         )
         assert len(json_export) > 0
-        
+
         html_export = await forensics_exporter.export_report(
             report,
             ExportFormat.HTML,
         )
         assert "<!DOCTYPE html>" in html_export
-        
-        # 6. Cleanup
+
         await replay_engine.stop_replay(replay_id)
         assert replay_id not in replay_engine.list_active_replays()

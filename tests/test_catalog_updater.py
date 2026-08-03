@@ -17,7 +17,6 @@ class TestCatalogUpdater:
 
     def test_initialization_with_explicit_root(self):
         """Test CatalogUpdater with explicit project root."""
-        # Use current project root
         project_root = Path(__file__).parent.parent
         updater = CatalogUpdater(project_root=project_root)
         assert updater is not None
@@ -34,10 +33,8 @@ class TestCatalogUpdater:
     def test_tool_exists_check(self):
         """Test internal _tool_exists method."""
         updater = CatalogUpdater()
-        # Test with a tool we know exists
         exists = updater._tool_exists('list_kubernetes_secrets')
         assert exists is True
         
-        # Test with a tool that doesn't exist
         exists = updater._tool_exists('nonexistent_tool_xyz')
         assert exists is False

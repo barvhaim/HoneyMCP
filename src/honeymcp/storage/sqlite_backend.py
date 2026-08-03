@@ -63,11 +63,9 @@ class SQLiteSessionBackend(SessionBackend):
         if self._initialized:
             return
 
-        # Ensure parent directory exists
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
         async with aiosqlite.connect(self.db_path) as db:
-            # Sessions table
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS sessions (
                     session_id TEXT PRIMARY KEY,
@@ -76,7 +74,6 @@ class SQLiteSessionBackend(SessionBackend):
                 )
             """)
 
-            # Tool calls table
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS tool_calls (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -87,7 +84,6 @@ class SQLiteSessionBackend(SessionBackend):
                 )
             """)
 
-            # Rate limit tracking table
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS rate_limits (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -96,7 +92,6 @@ class SQLiteSessionBackend(SessionBackend):
                 )
             """)
 
-            # Create indexes for performance
             await db.execute("""
                 CREATE INDEX IF NOT EXISTS idx_tool_calls_session 
                 ON tool_calls(session_id, timestamp)
@@ -154,7 +149,6 @@ class SQLiteSessionBackend(SessionBackend):
         await self._init_db()
 
         async with aiosqlite.connect(self.db_path) as db:
-            # Ensure session exists
             await db.execute(
                 """
                 INSERT OR IGNORE INTO sessions (session_id, last_updated)
@@ -163,7 +157,6 @@ class SQLiteSessionBackend(SessionBackend):
                 (session_id, datetime.utcnow()),
             )
 
-            # Record tool call
             await db.execute(
                 """
                 INSERT INTO tool_calls (session_id, tool_name, timestamp)
@@ -172,7 +165,6 @@ class SQLiteSessionBackend(SessionBackend):
                 (session_id, tool_name, timestamp),
             )
 
-            # Update session last_updated
             await db.execute(
                 """
                 UPDATE sessions 
@@ -212,7 +204,6 @@ class SQLiteSessionBackend(SessionBackend):
         cutoff = now - timedelta(minutes=1)
 
         async with aiosqlite.connect(self.db_path) as db:
-            # Record this call
             await db.execute(
                 """
                 INSERT INTO rate_limits (session_id, timestamp)
@@ -221,7 +212,6 @@ class SQLiteSessionBackend(SessionBackend):
                 (session_id, now),
             )
 
-            # Count calls in the last minute
             cursor = await db.execute(
                 """
                 SELECT COUNT(*) FROM rate_limits
@@ -233,7 +223,6 @@ class SQLiteSessionBackend(SessionBackend):
             row = await cursor.fetchone()
             count = row[0] if row else 0
 
-            # Clean up old entries
             await db.execute(
                 """
                 DELETE FROM rate_limits
@@ -260,7 +249,6 @@ class SQLiteSessionBackend(SessionBackend):
         cutoff = datetime.utcnow() - timedelta(seconds=ttl_seconds)
 
         async with aiosqlite.connect(self.db_path) as db:
-            # Delete expired sessions
             cursor = await db.execute(
                 """
                 DELETE FROM sessions 
@@ -270,13 +258,11 @@ class SQLiteSessionBackend(SessionBackend):
             )
             deleted_count = cursor.rowcount
 
-            # Clean up orphaned tool calls
             await db.execute("""
                 DELETE FROM tool_calls
                 WHERE session_id NOT IN (SELECT session_id FROM sessions)
             """)
 
-            # Clean up old rate limit entries
             await db.execute(
                 """
                 DELETE FROM rate_limits

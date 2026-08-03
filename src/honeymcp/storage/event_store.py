@@ -30,15 +30,12 @@ async def store_event(
     """
     storage_path = resolve_event_storage_path(storage_path)
 
-    # Create date-based directory structure
     date_dir = storage_path / fingerprint.timestamp.strftime("%Y-%m-%d")
     date_dir.mkdir(parents=True, exist_ok=True)
 
-    # Generate filename: HHMMSS_session_id.json
     filename = f"{fingerprint.timestamp.strftime('%H%M%S')}_" f"{fingerprint.session_id[:8]}.json"
     filepath = date_dir / filename
 
-    # Write event to JSON file
     async with aiofiles.open(filepath, "w") as f:
         await f.write(fingerprint.model_dump_json(indent=2))
 
@@ -66,12 +63,10 @@ async def list_events(
 
     events = []
 
-    # Scan all date directories
     for date_dir in sorted(storage_path.iterdir(), reverse=True):
         if not date_dir.is_dir():
             continue
 
-        # Check if date is in range
         try:
             dir_date = datetime.strptime(date_dir.name, "%Y-%m-%d").date()
             if start_date and dir_date < start_date:
@@ -79,10 +74,8 @@ async def list_events(
             if end_date and dir_date > end_date:
                 continue
         except ValueError:
-            # Skip directories that don't match date format
             continue
 
-        # Load all JSON files in this date directory
         for json_file in sorted(date_dir.glob("*.json"), reverse=True):
             try:
                 async with aiofiles.open(json_file, "r") as f:
@@ -90,7 +83,6 @@ async def list_events(
                     event = AttackFingerprint.model_validate_json(content)
                     events.append(event)
             except Exception as e:
-                # Skip files that can't be parsed
                 print(f"Warning: Failed to load {json_file}: {e}")
                 continue
 
@@ -109,7 +101,6 @@ async def get_event(
     Returns:
         Attack fingerprint if found, None otherwise
     """
-    # Search all date directories for the event
     storage_path = resolve_event_storage_path(storage_path)
     if not storage_path.exists():
         return None
@@ -146,7 +137,6 @@ async def update_event(
     Returns:
         True if event was found and updated, False otherwise
     """
-    # Find the event file
     storage_path = resolve_event_storage_path(storage_path)
     if not storage_path.exists():
         return False
@@ -162,12 +152,10 @@ async def update_event(
                     event = AttackFingerprint.model_validate_json(content)
 
                 if event.event_id == event_id:
-                    # Update fields
                     event_dict = event.model_dump()
                     event_dict.update(updates)
                     updated_event = AttackFingerprint(**event_dict)
 
-                    # Write back to file
                     async with aiofiles.open(json_file, "w") as f:
                         await f.write(updated_event.model_dump_json(indent=2))
 
@@ -243,7 +231,7 @@ def cleanup_old_events(
         try:
             dir_date = datetime.strptime(date_dir.name, "%Y-%m-%d").date()
         except ValueError:
-            continue  # Skip directories that don't match date format
+            continue
 
         if dir_date < cutoff:
             for json_file in date_dir.glob("*.json"):

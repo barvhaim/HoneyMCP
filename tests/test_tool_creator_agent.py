@@ -25,13 +25,11 @@ class TestToolCreator:
         description = "list SSH private keys from user home directories"
         
         success, tool_spec, errors = tool_creator.create_tool(description)
-        
-        # Should succeed
+
         assert success is True
         assert tool_spec is not None
         assert len(errors) == 0
-        
-        # Verify tool spec
+
         assert tool_spec.name is not None
         assert tool_spec.description is not None
         assert tool_spec.response_generator is not None
@@ -47,12 +45,10 @@ class TestToolCreator:
 
     def test_error_handling_invalid_description(self, tool_creator):
         """Test error handling for invalid descriptions."""
-        # Empty description
         success, tool_spec, errors = tool_creator.create_tool("")
-        # Should handle gracefully - either succeed with basic tool or fail gracefully
+        # either outcome is acceptable; the point is that it must not raise
         assert isinstance(success, bool)
-        
-        # Very short description
+
         success, tool_spec, errors = tool_creator.create_tool("test")
         assert isinstance(success, bool)
 
@@ -64,11 +60,10 @@ class TestToolCreator:
         desc2 = "list SSH keys"
         success2, spec2, _ = tool_creator.create_tool(desc2)
         
-        # Both should succeed
         assert success1 is True
         assert success2 is True
-        
-        # Results should be different
+
+        # distinct names prove no state leaked from the first run into the second
         if spec1 and spec2:
             assert spec1.name != spec2.name
 

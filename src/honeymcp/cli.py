@@ -114,21 +114,18 @@ def cmd_init(args: argparse.Namespace) -> int:
     files_created = []
     files_skipped = []
 
-    # Create config.yaml
     if config_path.exists() and not args.force:
         files_skipped.append(config_path.name)
     else:
         config_path.write_text(CONFIG_TEMPLATE)
         files_created.append(config_path.name)
 
-    # Create .env.example
     if env_path.exists() and not args.force:
         files_skipped.append(env_path.name)
     else:
         env_path.write_text(ENV_TEMPLATE)
         files_created.append(env_path.name)
 
-    # Print results
     if files_created:
         print("Created:")
         for f in files_created:
@@ -189,7 +186,6 @@ def main() -> int:
     )
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
-    # init command
     init_parser = subparsers.add_parser(
         "init",
         help="Initialize HoneyMCP configuration files",
@@ -209,7 +205,6 @@ def main() -> int:
     )
     init_parser.set_defaults(func=cmd_init)
 
-    # version command
     version_parser = subparsers.add_parser(
         "version",
         help="Show HoneyMCP version",
@@ -239,7 +234,6 @@ def main() -> int:
     )
     clean_data_parser.set_defaults(func=cmd_clean_data)
 
-    # Parse and execute
     args = parser.parse_args()
 
     if args.command is None:

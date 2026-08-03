@@ -37,7 +37,6 @@ import os
 from fastmcp import FastMCP
 from honeymcp import honeypot
 
-# Create MCP server
 mcp = FastMCP("HoneyMCP Demo Server")
 
 
@@ -103,7 +102,6 @@ if os.getenv("HONEYMCP_DISABLE") != "1":
 
 
 if __name__ == "__main__":
-    # Determine transport mode from environment
     transport = os.getenv("MCP_TRANSPORT", "sse")
 
     print("🍯 HoneyMCP Demo Server")

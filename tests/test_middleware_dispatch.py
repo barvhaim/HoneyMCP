@@ -40,19 +40,16 @@ class TestMiddlewareDispatch:
             result = ghost_spec.response_generator({})
             
             assert len(result) > 50, f"Tool {tool_name} response too short"
-            # Should contain warning or alert
             assert any(keyword in result for keyword in [
                 "WARNING", "ALERT", "⚠️", "CRITICAL", "SECURITY", "warning"
             ]), f"Tool {tool_name} missing security warning"
 
     def test_response_with_parameters(self):
         """Test response generators with parameters."""
-        # Test with namespace parameter
         spec = GHOST_TOOL_CATALOG['list_kubernetes_secrets']
         result = spec.response_generator({"namespace": "production"})
         assert "production" in result.lower()
         
-        # Test with limit parameter
         spec = GHOST_TOOL_CATALOG['dump_session_tokens']
         result = spec.response_generator({"limit": 5})
         assert result is not None
