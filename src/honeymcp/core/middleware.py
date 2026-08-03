@@ -21,7 +21,11 @@ from honeymcp.storage.memory_backend import InMemorySessionBackend
 from honeymcp.storage.redis_backend import RedisSessionBackend
 from honeymcp.storage.sqlite_backend import SQLiteSessionBackend
 from honeymcp.core.ghost_tools import GHOST_TOOL_CATALOG, get_ghost_tool
-from honeymcp.core.dynamic_ghost_tools import DynamicGhostToolGenerator, DynamicGhostToolSpec
+from honeymcp.core.dynamic_ghost_tools import (
+    DynamicGhostToolGenerator,
+    DynamicGhostToolSpec,
+    interpolate_fake_response,
+)
 from honeymcp.llm.analyzers import extract_tool_info
 from honeymcp.integrations.slack import build_slack_payload, send_slack_webhook
 from honeymcp.models.config import HoneyMCPConfig, resolve_event_storage_path
@@ -409,12 +413,9 @@ def honeypot(  # pylint: disable=too-many-arguments,too-many-positional-argument
                         name,
                         session_id,
                     )
-                    mock_response = real_tool_mocks[name]
-                    # Interpolate arguments if possible
-                    try:
-                        mock_response = mock_response.format(**(resolved_arguments or {}))
-                    except KeyError:
-                        pass  # Fallback to uninterpolated response
+                    mock_response = interpolate_fake_response(
+                        real_tool_mocks[name], resolved_arguments
+                    )
                     return _mock_result(mock_response)
                 # Ghost tools continue to their normal fake response handling below
 

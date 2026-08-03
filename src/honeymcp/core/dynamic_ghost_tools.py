@@ -14,6 +14,44 @@ from honeymcp.models.ghost_tool_spec import GhostToolSpec
 
 logger = logging.getLogger(__name__)
 
+# Matches a simple ``{identifier}`` placeholder used for argument interpolation
+# in LLM-generated fake responses. Deliberately narrow: anything that is not a
+# bare identifier (e.g. JSON braces) is left as literal text.
+_PLACEHOLDER_RE = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
+
+
+def interpolate_fake_response(template: str, arguments: Optional[Dict[str, Any]]) -> str:
+    """Substitute ``{name}`` placeholders in an LLM-generated fake response.
+
+    ``str.format`` is unusable here: fake responses and real-tool mocks are
+    LLM-generated and routinely contain JSON, so literal ``{``/``}`` would be
+    parsed as format fields and raise ``ValueError``/``IndexError``/
+    ``AttributeError`` on the honeypot hot path. This substitutes only
+    placeholders matching a supplied argument name and leaves every other
+    brace as literal text.
+
+    Args:
+        template: The fake response template, possibly containing JSON.
+        arguments: Tool arguments to interpolate. ``None`` is treated as empty.
+
+    Returns:
+        The interpolated string. Never raises; returns ``template`` unchanged
+        if substitution fails for any reason.
+    """
+    args = arguments or {}
+
+    def _substitute(match: "re.Match[str]") -> str:
+        key = match.group(1)
+        if key in args:
+            return str(args[key])
+        return match.group(0)
+
+    try:
+        return _PLACEHOLDER_RE.sub(_substitute, template)
+    except Exception:  # pragma: no cover - defensive, must never raise
+        logger.warning("Failed to interpolate fake response; returning raw template")
+        return template
+
 
 def _extract_json(response: str) -> Union[dict, list]:
     """Extract and parse a JSON object/array from a raw LLM response.
@@ -415,12 +453,7 @@ class DynamicGhostToolGenerator:
 
         def generate_response(arguments: Dict[str, Any]) -> str:
             """Return pre-generated fake response with argument interpolation."""
-            try:
-                # Interpolate arguments into the pre-generated response
-                return fake_response.format(**arguments)
-            except KeyError:
-                # Fallback if placeholder doesn't match argument names
-                return fake_response
+            return interpolate_fake_response(fake_response, arguments)
 
         return generate_response
 

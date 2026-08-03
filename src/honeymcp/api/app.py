@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
+from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, Response, StreamingResponse
@@ -29,6 +32,56 @@ from honeymcp.integrations.streaming import StreamManager
 from honeymcp.forensics.replay_engine import ReplayEngine
 from honeymcp.forensics.report_generator import ReportGenerator
 from honeymcp.forensics.exporters import ForensicsExporter
+
+logger = logging.getLogger(__name__)
+
+# How often the SSE watcher rescans the event directory for new captures.
+_EVENT_WATCH_INTERVAL_SECONDS = 1.0
+
+
+async def _watch_events_for_stream(storage_path: Path, poll_interval: float) -> None:
+    """Publish newly stored attack events to SSE subscribers.
+
+    HoneyMCP-wrapped MCP servers normally run in a *different process* from this
+    API, so an in-memory publish inside the interceptor can never reach the
+    dashboard's stream. Watching the shared on-disk event store is what makes
+    ``/stream`` live for the common deployment: server in one process, dashboard
+    in another.
+
+    Only events observed after startup are published; existing captures are
+    already delivered by the stream's own history replay and by ``/events``.
+
+    Args:
+        storage_path: Base directory of the JSON event store.
+        poll_interval: Seconds to wait between directory scans.
+    """
+    seen: set[str] = set()
+    primed = False
+
+    while True:
+        try:
+            events = await list_events(storage_path=storage_path)
+            if not primed:
+                # First pass only records what already exists so we don't
+                # re-announce history as if it were live.
+                seen = {event.event_id for event in events}
+                primed = True
+            else:
+                stream = StreamManager.get_stream()
+                if stream is not None:
+                    # Oldest first so the dashboard's prepend order matches
+                    # real chronological arrival.
+                    for event in sorted(events, key=lambda e: e.timestamp):
+                        if event.event_id in seen:
+                            continue
+                        seen.add(event.event_id)
+                        await stream.publish_attack(event)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # pragma: no cover - watcher must never die
+            logger.warning("Event stream watcher error: %s", exc)
+
+        await asyncio.sleep(poll_interval)
 
 
 class EventListResponse(BaseModel):
@@ -131,10 +184,23 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
     """Create a FastAPI app configured with HoneyMCP settings."""
     config = HoneyMCPConfig.load(config_path)
 
+    @asynccontextmanager
+    async def lifespan(running_app: FastAPI) -> AsyncIterator[None]:
+        """Cancel the lazily-started SSE event watcher on shutdown."""
+        yield
+        task = getattr(running_app.state, "event_watcher_task", None)
+        if task is not None and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
     app = FastAPI(
         title="HoneyMCP API",
         version="0.1.0",
         description="HTTP API for HoneyMCP dashboard consumption",
+        lifespan=lifespan,
     )
     _configure_cors(app)
 
@@ -142,6 +208,10 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
     app.state.event_storage_path = config.event_storage_path
     dashboard_root = Path(__file__).resolve().parent.parent / "dashboard" / "react_umd"
     app.state.dashboard_root = dashboard_root
+
+    # Background task publishing on-disk captures to SSE clients; started
+    # lazily on the first /stream connection (see the /stream endpoint).
+    app.state.event_watcher_task = None
 
     # Initialize forensics components
     app.state.replay_engine = ReplayEngine()
@@ -422,6 +492,18 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
         stream = StreamManager.get_stream()
         if stream is None:
             stream = StreamManager.initialize(max_history=100)
+
+        # Lazily start the on-disk watcher so attacks captured by MCP server
+        # processes (SSE/HTTP/stdio transports all run separately from this API)
+        # show up live instead of only after a manual browser refresh.
+        watcher = getattr(app.state, "event_watcher_task", None)
+        if watcher is None or watcher.done():
+            app.state.event_watcher_task = asyncio.create_task(
+                _watch_events_for_stream(
+                    app.state.event_storage_path,
+                    _EVENT_WATCH_INTERVAL_SECONDS,
+                )
+            )
 
         # Generate unique client ID
         client_id = f"client_{uuid.uuid4().hex[:12]}"

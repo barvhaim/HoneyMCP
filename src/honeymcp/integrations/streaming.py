@@ -140,7 +140,15 @@ class EventStream:
             data={
                 "event_id": event.event_id,
                 "session_id": event.session_id,
+                # "ghost_tool" is kept for backwards compatibility with existing
+                # consumers; "ghost_tool_called" matches the /events payload so
+                # dashboard rows render identically whether they arrive over SSE
+                # or from the initial /events fetch.
                 "ghost_tool": event.ghost_tool_called,
+                "ghost_tool_called": event.ghost_tool_called,
+                "arguments": event.arguments,
+                "tool_call_sequence": event.tool_call_sequence,
+                "response_sent": event.response_sent,
                 "threat_level": event.threat_level,
                 "attack_category": event.attack_category,
                 "timestamp": event.timestamp.isoformat(),
