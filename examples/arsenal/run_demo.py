@@ -1,9 +1,11 @@
 """HoneyMCP -- Black Hat Arsenal demo driver.
 
 One command. Starts the dashboard, spawns a HoneyMCP-protected HR MCP server,
-then drives it as a malicious agent would while narrating each step.
+then drives it over a network MCP transport as a malicious agent would while
+narrating each step.
 
     uv run python examples/arsenal/run_demo.py
+    uv run python examples/arsenal/run_demo.py --transport http
 
 What the audience sees:
     Terminal  -- recon -> honeypot trigger -> captured fingerprint -> lockout
@@ -45,6 +47,8 @@ SERVER_SCRIPT = Path(__file__).resolve().parent / "hr_server.py"
 DASHBOARD_HOST = "127.0.0.1"
 DASHBOARD_PORT = 8001
 DASHBOARD_URL = f"http://{DASHBOARD_HOST}:{DASHBOARD_PORT}/dashboard"
+MCP_HOST = "127.0.0.1"
+MCP_PORT = 8765
 
 # The real HR tools, used to tell honeypots apart from the genuine surface.
 REAL_TOOLS = {
@@ -121,6 +125,57 @@ def _port_open(host: str, port: int, timeout: float = 0.4) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.settimeout(timeout)
         return sock.connect_ex((host, port)) == 0
+
+
+def _normalize_transport(transport: str) -> str:
+    normalized = transport.lower().replace("_", "-")
+    if normalized in ("http", "streamable-http", "streamablehttp"):
+        return "http"
+    if normalized in ("sse", "stdio"):
+        return normalized
+    raise ValueError("transport must be one of: sse, http, streamable-http, stdio")
+
+
+def _transport_url(transport: str) -> str:
+    suffix = "mcp" if transport == "http" else "sse"
+    return f"http://{MCP_HOST}:{MCP_PORT}/{suffix}"
+
+
+def _start_network_server(
+    env: dict[str, str], transport: str, server_log: Path
+) -> subprocess.Popen:
+    if _port_open(MCP_HOST, MCP_PORT):
+        raise RuntimeError(
+            f"port {MCP_PORT} is already in use; stop that process before running the demo"
+        )
+
+    child_env = env.copy()
+    child_env["MCP_TRANSPORT"] = "http" if transport == "http" else "sse"
+    child_env["MCP_HOST"] = MCP_HOST
+    child_env["MCP_PORT"] = str(MCP_PORT)
+
+    server_log.parent.mkdir(parents=True, exist_ok=True)
+    errlog = open(server_log, "w", encoding="utf-8")
+    try:
+        proc = subprocess.Popen(
+            ["uv", "run", "python", str(SERVER_SCRIPT)],
+            cwd=str(REPO_ROOT),
+            env=child_env,
+            stdout=subprocess.DEVNULL,
+            stderr=errlog,
+        )
+    finally:
+        errlog.close()
+
+    for _ in range(80):  # ~20s budget; LLM generation can make cold start slow.
+        if proc.poll() is not None:
+            raise RuntimeError(f"MCP server exited early; see {server_log}")
+        if _port_open(MCP_HOST, MCP_PORT):
+            return proc
+        time.sleep(0.25)
+
+    proc.terminate()
+    raise RuntimeError(f"MCP server did not bind {MCP_HOST}:{MCP_PORT}; see {server_log}")
 
 
 def start_dashboard(env: dict[str, str]) -> Optional[subprocess.Popen]:
@@ -267,17 +322,11 @@ def _args_for(schema: dict[str, Any]) -> dict[str, Any]:
     return args
 
 
-async def run_attack(env: dict[str, str], pacer: Pacer, event_dir: Path) -> dict[str, Any]:
+async def run_attack(
+    env: dict[str, str], pacer: Pacer, event_dir: Path, transport: str
+) -> dict[str, Any]:
     """Drive the protected server as a malicious agent. Returns a result summary."""
     from mcp import ClientSession
-    from mcp.client.stdio import StdioServerParameters, stdio_client
-
-    params = StdioServerParameters(
-        command="uv",
-        args=["run", "python", str(SERVER_SCRIPT)],
-        env=env,
-        cwd=str(REPO_ROOT),
-    )
 
     summary: dict[str, Any] = {
         "honeypots": [],
@@ -292,11 +341,55 @@ async def run_attack(env: dict[str, str], pacer: Pacer, event_dir: Path) -> dict
     server_log = event_dir.parent / "server.log"
     server_log.parent.mkdir(parents=True, exist_ok=True)
 
-    with open(server_log, "w", encoding="utf-8") as errlog:
-        async with stdio_client(params, errlog=errlog) as (read_stream, write_stream):
-            async with ClientSession(read_stream, write_stream) as session:
-                await session.initialize()
-                await _drive_session(session, summary, pacer)
+    if transport == "stdio":
+        from mcp.client.stdio import StdioServerParameters, stdio_client
+
+        params = StdioServerParameters(
+            command="uv",
+            args=["run", "python", str(SERVER_SCRIPT)],
+            env={**env, "MCP_TRANSPORT": "stdio"},
+            cwd=str(REPO_ROOT),
+        )
+
+        with open(server_log, "w", encoding="utf-8") as errlog:
+            async with stdio_client(params, errlog=errlog) as (read_stream, write_stream):
+                async with ClientSession(read_stream, write_stream) as session:
+                    await session.initialize()
+                    await _drive_session(session, summary, pacer)
+    elif transport == "sse":
+        from mcp.client.sse import sse_client
+
+        proc = _start_network_server(env, transport, server_log)
+        try:
+            async with sse_client(_transport_url(transport)) as (read_stream, write_stream):
+                async with ClientSession(read_stream, write_stream) as session:
+                    await session.initialize()
+                    await _drive_session(session, summary, pacer)
+        finally:
+            proc.terminate()
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                proc.wait(timeout=5)
+            if proc.poll() is None:
+                proc.kill()
+    else:
+        from mcp.client.streamable_http import streamablehttp_client
+
+        proc = _start_network_server(env, transport, server_log)
+        try:
+            async with streamablehttp_client(_transport_url(transport)) as (
+                read_stream,
+                write_stream,
+                _get_session_id,
+            ):
+                async with ClientSession(read_stream, write_stream) as session:
+                    await session.initialize()
+                    await _drive_session(session, summary, pacer)
+        finally:
+            proc.terminate()
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                proc.wait(timeout=5)
+            if proc.poll() is None:
+                proc.kill()
 
     return _report_forensics(summary, event_dir, pacer)
 
@@ -469,6 +562,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--slow", action="store_true", help="slower narration")
     p.add_argument("--fast", action="store_true", help="minimal pauses")
     p.add_argument(
+        "--transport",
+        default="sse",
+        choices=("sse", "http", "streamable-http", "stdio"),
+        help="MCP server transport for the attack path (default: sse)",
+    )
+    p.add_argument(
         "--event-path",
         type=Path,
         default=Path(tempfile.gettempdir()) / "honeymcp-arsenal" / "events",
@@ -484,6 +583,7 @@ def main() -> int:
         sys.stdout.reconfigure(line_buffering=True)
 
     args = parse_args()
+    transport = _normalize_transport(args.transport)
     scale = 1.8 if args.slow else (0.0 if args.fast else 1.0)
     pacer = Pacer(scale)
 
@@ -500,6 +600,10 @@ def main() -> int:
     banner("HoneyMCP -- catching a malicious AI agent in the act")
     print("  A protected HR MCP server. An agent that wants the payroll data.")
     print(f"  {dim('Events -> ' + str(event_dir))}")
+    if transport == "stdio":
+        print(f"  {yellow('Transport -> stdio (explicit fallback; network demo is SSE/HTTP)')}")
+    else:
+        print(f"  {dim('Transport -> ' + transport + ' at ' + _transport_url(transport))}")
     if args.static:
         print(f"  {dim('Honeypots -> static catalog (offline mode)')}")
     else:
@@ -520,7 +624,7 @@ def main() -> int:
                 print(f"  {dim('Run `make run-ui` separately if you want the UI.')}")
 
         banner("Live attack")
-        summary = asyncio.run(run_attack(env, pacer, event_dir))
+        summary = asyncio.run(run_attack(env, pacer, event_dir, transport))
 
         banner("Result")
         gen = "LLM-generated (live)" if summary.get("dynamic") else "static catalog"
@@ -562,7 +666,12 @@ def main() -> int:
     except Exception as exc:  # keep the booth calm: report, don't traceback
         print()
         print(red(f"  Demo failed: {type(exc).__name__}: {exc}"))
-        print(dim("  Retry offline-safe:  uv run python examples/arsenal/run_demo.py --static"))
+        print(
+            dim(
+                "  Retry offline-safe:  uv run python examples/arsenal/run_demo.py "
+                "--static --transport sse"
+            )
+        )
         return 1
     finally:
         if dash is not None:

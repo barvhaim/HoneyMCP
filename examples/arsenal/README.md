@@ -9,8 +9,10 @@ HR MCP server and streams the captured events into the live dashboard.
 uv run python examples/arsenal/run_demo.py
 ```
 
-Then open **http://127.0.0.1:8001/dashboard** side by side with the terminal.
-Ctrl-C when you're done presenting.
+By default the attack connects to an SSE MCP server at
+**http://127.0.0.1:8765/sse**. Then open
+**http://127.0.0.1:8001/dashboard** side by side with the terminal. Ctrl-C when
+you're done presenting.
 
 ### The one command to memorize
 
@@ -24,6 +26,19 @@ uv run python examples/arsenal/run_demo.py --static
 is unreachable from the venue** — the default tries live honeypot generation
 first. It falls back automatically, so `--static` is about a predictable run
 rather than a working one.
+
+### MCP transport
+
+The Black Hat path is a network MCP demo by default:
+
+```bash
+uv run python examples/arsenal/run_demo.py --transport sse
+uv run python examples/arsenal/run_demo.py --transport http
+```
+
+`--transport http` starts FastMCP's streamable HTTP server at
+`http://127.0.0.1:8765/mcp`. `stdio` still exists as an explicit fallback for
+local debugging, but it is not the interesting conference demo.
 
 ### Live honeypot generation
 
@@ -53,6 +68,7 @@ branch does not set a base URL itself, so this env var is how you redirect it of
 | `--no-dashboard` | Terminal only. |
 | `--slow` / `--fast` | Narration pacing. `--slow` for a live audience. |
 | `--keep-events` | Don't wipe events from earlier runs. |
+| `--transport sse\|http` | MCP attack transport. Defaults to SSE; `http` means streamable HTTP. |
 | `--event-path DIR` | Where demo events go. Defaults under `$TMPDIR`. |
 
 `ARSENAL_VERBOSE=1` restores the suppressed LLM tracebacks when debugging.
@@ -122,8 +138,9 @@ taken. Check the endpoint env vars above, then
 stderr is also always captured to `<event-path>/../server.log`.
 
 **Nothing appears at all.** Fall back to
-`uv run python examples/arsenal/run_demo.py --static --no-dashboard`, which has no
-network or browser dependency.
+`uv run python examples/arsenal/run_demo.py --static --transport sse --no-dashboard`.
+To verify streamable HTTP specifically, use
+`uv run python examples/arsenal/run_demo.py --static --transport http --no-dashboard`.
 
 ## Files
 

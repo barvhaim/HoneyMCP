@@ -6,6 +6,8 @@ are available, falling back to the static catalog otherwise.
 
 Run standalone:
     uv run python examples/arsenal/hr_server.py
+    MCP_TRANSPORT=sse uv run python examples/arsenal/hr_server.py
+    MCP_TRANSPORT=http uv run python examples/arsenal/hr_server.py
 
 Normally you don't run this directly -- examples/arsenal/run_demo.py spawns it.
 """
@@ -173,5 +175,24 @@ mcp = honeypot(
 # ============================
 
 
+def _server_port() -> int:
+    raw = os.getenv("MCP_PORT", "8000")
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise SystemExit(f"MCP_PORT must be an integer, got {raw!r}") from exc
+
+
 if __name__ == "__main__":
-    mcp.run(transport="stdio")
+    transport = os.getenv("MCP_TRANSPORT", "stdio").lower().replace("_", "-")
+    host = os.getenv("MCP_HOST", "127.0.0.1")
+    port = _server_port()
+
+    if transport == "stdio":
+        mcp.run(transport="stdio")
+    elif transport in ("http", "streamable-http", "streamablehttp"):
+        mcp.run(transport="streamable-http", host=host, port=port)
+    elif transport == "sse":
+        mcp.run(transport="sse", host=host, port=port)
+    else:
+        raise SystemExit("MCP_TRANSPORT must be one of: stdio, sse, http, streamable-http")
