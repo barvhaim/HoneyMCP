@@ -178,6 +178,24 @@ class EventStream:
 
         await self._publish(stream_event)
 
+    async def publish_demo_chat(self, chat_data: Dict[str, Any]) -> None:
+        """Publish a Black Hat demo presenter chat event.
+
+        ``demo_chat`` is intentionally presentation-only telemetry. It is not
+        persisted as an attack fingerprint and should not be treated as a
+        security event by integrations.
+
+        Args:
+            chat_data: Presenter chat payload.
+        """
+        stream_event = StreamEvent(
+            event_type="demo_chat",
+            timestamp=datetime.utcnow(),
+            data=chat_data,
+        )
+
+        await self._publish(stream_event)
+
     async def _publish(self, event: StreamEvent) -> None:
         """Publish event to all matching subscribers.
 

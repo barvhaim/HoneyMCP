@@ -46,6 +46,23 @@ def test_delete_events_endpoint(tmp_path):
     assert list_response.json()["total"] == 0
 
 
+def test_arsenal_chat_endpoint_serves_presenter_ui(tmp_path):
+    """GET /arsenal/chat serves the Black Hat presenter app."""
+    config_path = tmp_path / "honeymcp.yaml"
+    config_path.write_text(
+        f"storage:\n  event_path: {tmp_path / 'events'}\n",
+        encoding="utf-8",
+    )
+
+    app = create_app(config_path=config_path)
+    client = TestClient(app)
+
+    response = client.get("/arsenal/chat")
+
+    assert response.status_code == 200
+    assert "HoneyMCP Arsenal HR Agent Chat" in response.text
+
+
 def test_replay_start_filters_events_by_session(tmp_path):
     """POST /replay/start only loads events for the requested session."""
     storage_path = tmp_path / "events"

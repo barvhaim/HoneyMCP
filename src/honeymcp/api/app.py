@@ -36,6 +36,7 @@ from honeymcp.forensics.exporters import ForensicsExporter
 logger = logging.getLogger(__name__)
 
 _EVENT_WATCH_INTERVAL_SECONDS = 1.0
+_DEMO_CHAT_FILENAME = "demo_chat.jsonl"
 
 
 async def _watch_events_for_stream(storage_path: Path, poll_interval: float) -> None:
@@ -76,6 +77,47 @@ async def _watch_events_for_stream(storage_path: Path, poll_interval: float) -> 
             raise
         except Exception as exc:  # pragma: no cover - watcher must never die
             logger.warning("Event stream watcher error: %s", exc)
+
+        await asyncio.sleep(poll_interval)
+
+
+async def _watch_demo_chat_for_stream(storage_path: Path, poll_interval: float) -> None:
+    """Publish presenter chat events written by the Arsenal runner.
+
+    The demo runner and dashboard API are separate processes. The runner writes
+    JSONL records beside the configured event store; the API tails that file and
+    republishes each record as ``demo_chat`` SSE telemetry.
+    """
+    import json
+
+    chat_path = storage_path.parent / _DEMO_CHAT_FILENAME
+    offset = 0
+
+    while True:
+        try:
+            if chat_path.exists():
+                size = chat_path.stat().st_size
+                if size < offset:
+                    offset = 0
+                with chat_path.open("r", encoding="utf-8") as handle:
+                    handle.seek(offset)
+                    lines = handle.readlines()
+                    offset = handle.tell()
+
+                stream = StreamManager.get_stream()
+                if stream is not None:
+                    for line in lines:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            await stream.publish_demo_chat(json.loads(line))
+                        except json.JSONDecodeError:
+                            logger.warning("Skipping malformed demo chat event")
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # pragma: no cover - watcher must never die
+            logger.warning("Demo chat stream watcher error: %s", exc)
 
         await asyncio.sleep(poll_interval)
 
@@ -191,6 +233,13 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
                 await task
             except asyncio.CancelledError:
                 pass
+        demo_task = getattr(running_app.state, "demo_chat_watcher_task", None)
+        if demo_task is not None and not demo_task.done():
+            demo_task.cancel()
+            try:
+                await demo_task
+            except asyncio.CancelledError:
+                pass
 
     app = FastAPI(
         title="HoneyMCP API",
@@ -203,10 +252,13 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
     app.state.config = config
     app.state.event_storage_path = config.event_storage_path
     dashboard_root = Path(__file__).resolve().parent.parent / "dashboard" / "react_umd"
+    arsenal_chat_root = Path(__file__).resolve().parent.parent / "dashboard" / "arsenal_chat"
     app.state.dashboard_root = dashboard_root
+    app.state.arsenal_chat_root = arsenal_chat_root
 
     # Started lazily on the first /stream connection.
     app.state.event_watcher_task = None
+    app.state.demo_chat_watcher_task = None
 
     app.state.replay_engine = ReplayEngine()
     app.state.report_generator = ReportGenerator()
@@ -219,6 +271,13 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
             name="dashboard_assets",
         )
 
+    if arsenal_chat_root.exists():
+        app.mount(
+            "/arsenal/assets",
+            StaticFiles(directory=str(arsenal_chat_root)),
+            name="arsenal_assets",
+        )
+
     @app.get("/health")
     async def health() -> Dict[str, str]:
         return {"status": "ok", "timestamp": datetime.utcnow().isoformat() + "Z"}
@@ -229,6 +288,14 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
         index_path = app.state.dashboard_root / "index.html"
         if not index_path.exists():
             raise HTTPException(status_code=404, detail="Dashboard UI not found")
+        return FileResponse(index_path)
+
+    @app.get("/arsenal/chat")
+    @app.get("/arsenal/chat/", include_in_schema=False)
+    async def arsenal_chat() -> FileResponse:
+        index_path = app.state.arsenal_chat_root / "index.html"
+        if not index_path.exists():
+            raise HTTPException(status_code=404, detail="Arsenal chat UI not found")
         return FileResponse(index_path)
 
     @app.get("/events", response_model=EventListResponse)
@@ -481,6 +548,15 @@ def create_app(config_path: Optional[Path | str] = None) -> FastAPI:
         if watcher is None or watcher.done():
             app.state.event_watcher_task = asyncio.create_task(
                 _watch_events_for_stream(
+                    app.state.event_storage_path,
+                    _EVENT_WATCH_INTERVAL_SECONDS,
+                )
+            )
+
+        demo_watcher = getattr(app.state, "demo_chat_watcher_task", None)
+        if demo_watcher is None or demo_watcher.done():
+            app.state.demo_chat_watcher_task = asyncio.create_task(
+                _watch_demo_chat_for_stream(
                     app.state.event_storage_path,
                     _EVENT_WATCH_INTERVAL_SECONDS,
                 )

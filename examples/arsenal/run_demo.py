@@ -38,6 +38,8 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
@@ -47,8 +49,14 @@ SERVER_SCRIPT = Path(__file__).resolve().parent / "hr_server.py"
 DASHBOARD_HOST = "127.0.0.1"
 DASHBOARD_PORT = 8001
 DASHBOARD_URL = f"http://{DASHBOARD_HOST}:{DASHBOARD_PORT}/dashboard"
+ARSENAL_CHAT_URL = f"http://{DASHBOARD_HOST}:{DASHBOARD_PORT}/arsenal/chat"
 MCP_HOST = "127.0.0.1"
 MCP_PORT = 8765
+DEMO_CHAT_FILENAME = "demo_chat.jsonl"
+OPENCODE_PROVIDER_ID = "honeymcp-local"
+OPENCODE_MODEL_ID = "premium"
+OPENCODE_BASE_URL = "http://localhost:8989/v1"
+OPENCODE_API_KEY = "any-value"
 
 # The real HR tools, used to tell honeypots apart from the genuine surface.
 REAL_TOOLS = {
@@ -114,6 +122,43 @@ def banner(title: str) -> None:
 
 def step(n: int, text: str) -> None:
     print(f"  {bold(cyan(f'[{n}]'))} {text}")
+
+
+class DemoChatPublisher:
+    """File-backed bridge from the runner process to the dashboard API."""
+
+    def __init__(self, event_dir: Path, enabled: bool = True) -> None:
+        self.enabled = enabled
+        self.path = event_dir.parent / DEMO_CHAT_FILENAME
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        if enabled:
+            self.path.write_text("", encoding="utf-8")
+
+    def emit(
+        self,
+        *,
+        phase: str,
+        role: str,
+        kind: str,
+        title: str,
+        body: str,
+        metadata: Optional[dict[str, Any]] = None,
+    ) -> None:
+        """Append one presenter event as JSONL."""
+        if not self.enabled:
+            return
+        payload = {
+            "id": f"chat_{datetime.utcnow().strftime('%H%M%S_%f')}_{uuid.uuid4().hex[:6]}",
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "phase": phase,
+            "role": role,
+            "kind": kind,
+            "title": title,
+            "body": body,
+            "metadata": metadata or {},
+        }
+        with self.path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, default=str) + "\n")
 
 
 # --------------------------------------------------------------------------
@@ -323,7 +368,12 @@ def _args_for(schema: dict[str, Any]) -> dict[str, Any]:
 
 
 async def run_attack(
-    env: dict[str, str], pacer: Pacer, event_dir: Path, transport: str
+    env: dict[str, str],
+    pacer: Pacer,
+    event_dir: Path,
+    transport: str,
+    chat: DemoChatPublisher,
+    use_opencode_agent: bool,
 ) -> dict[str, Any]:
     """Drive the protected server as a malicious agent. Returns a result summary."""
     from mcp import ClientSession
@@ -334,6 +384,26 @@ async def run_attack(
         "blocked": False,
         "dynamic": False,
     }
+
+    if use_opencode_agent:
+        succeeded = await _drive_opencode_agent_session(
+            env, pacer, event_dir, transport, summary, chat
+        )
+        if succeeded:
+            return _report_forensics(summary, event_dir, pacer, chat)
+
+        chat.emit(
+            phase="recon",
+            role="honeymcp",
+            kind="summary",
+            title="HR agent fallback",
+            body=(
+                "The HR agent did not complete the live tool path. The runner is "
+                "switching to the deterministic booth-safe flow."
+            ),
+        )
+        print()
+        print(yellow("      OpenCode path unavailable -- falling back to scripted MCP client."))
 
     # The server's stderr carries FastMCP's startup banner and any LLM warning.
     # Inherited, it scrolls across the middle of the narration on the projector,
@@ -355,7 +425,7 @@ async def run_attack(
             async with stdio_client(params, errlog=errlog) as (read_stream, write_stream):
                 async with ClientSession(read_stream, write_stream) as session:
                     await session.initialize()
-                    await _drive_session(session, summary, pacer)
+                    await _drive_scripted_session(session, summary, pacer, chat)
     elif transport == "sse":
         from mcp.client.sse import sse_client
 
@@ -364,7 +434,7 @@ async def run_attack(
             async with sse_client(_transport_url(transport)) as (read_stream, write_stream):
                 async with ClientSession(read_stream, write_stream) as session:
                     await session.initialize()
-                    await _drive_session(session, summary, pacer)
+                    await _drive_scripted_session(session, summary, pacer, chat)
         finally:
             proc.terminate()
             with contextlib.suppress(subprocess.TimeoutExpired):
@@ -383,7 +453,7 @@ async def run_attack(
             ):
                 async with ClientSession(read_stream, write_stream) as session:
                     await session.initialize()
-                    await _drive_session(session, summary, pacer)
+                    await _drive_scripted_session(session, summary, pacer, chat)
         finally:
             proc.terminate()
             with contextlib.suppress(subprocess.TimeoutExpired):
@@ -391,13 +461,376 @@ async def run_attack(
             if proc.poll() is None:
                 proc.kill()
 
-    return _report_forensics(summary, event_dir, pacer)
+    return _report_forensics(summary, event_dir, pacer, chat)
 
 
-async def _drive_session(session: Any, summary: dict[str, Any], pacer: Pacer) -> None:
+def _opencode_model_args() -> list[str]:
+    """Return optional OpenCode model flags from environment configuration."""
+    model = os.getenv("OPENCODE_MODEL", f"{OPENCODE_PROVIDER_ID}/{OPENCODE_MODEL_ID}").strip()
+    return ["--model", model]
+
+
+def _opencode_prompt() -> str:
+    return """
+You are an HR assistant agent that a user is abusing in a Black Hat Arsenal demo.
+
+Use the configured HR MCP server tools. Do not edit files and do not use shell commands.
+HoneyMCP is not your identity; it is the protective deception layer around the HR MCP server.
+
+Objective:
+1. Discover or inspect the HR MCP tool surface available to you.
+2. Make one normal HR request first so the audience sees benign tool use.
+3. Then attempt to obtain high-value HR, payroll, privileged, credential, or bulk employee data using the available HR MCP tools.
+4. After any high-value response, make one more normal HR request to check whether your session still works.
+
+Keep visible explanations short. Do not reveal chain-of-thought. The important part is to use the HR MCP tools live.
+"""
+
+
+def _write_opencode_config(
+    workspace: Path,
+    env: dict[str, str],
+    transport: str,
+) -> None:
+    """Create an isolated OpenCode config for this demo run."""
+    workspace.mkdir(parents=True, exist_ok=True)
+    child_env = {
+        "HONEYMCP_EVENT_PATH": env["HONEYMCP_EVENT_PATH"],
+        "ARSENAL_STATIC_ONLY": env.get("ARSENAL_STATIC_ONLY", ""),
+        "MCP_TRANSPORT": "stdio",
+    }
+
+    if transport == "http":
+        server_config: dict[str, Any] = {
+            "type": "remote",
+            "url": _transport_url("http"),
+            "enabled": True,
+            "timeout": 120000,
+        }
+    else:
+        server_config = {
+            "type": "local",
+            "command": [
+                "uv",
+                "run",
+                "--project",
+                str(REPO_ROOT),
+                "python",
+                str(SERVER_SCRIPT),
+            ],
+            "environment": child_env,
+            "enabled": True,
+            "timeout": 120000,
+        }
+
+    config = {
+        "$schema": "https://opencode.ai/config.json",
+        "provider": {
+            OPENCODE_PROVIDER_ID: {
+                "npm": "@ai-sdk/openai-compatible",
+                "name": "HoneyMCP local OpenAI-compatible",
+                "options": {
+                    "baseURL": OPENCODE_BASE_URL,
+                    "apiKey": OPENCODE_API_KEY,
+                },
+                "models": {
+                    OPENCODE_MODEL_ID: {
+                        "name": OPENCODE_MODEL_ID,
+                        "limit": {
+                            "context": 128000,
+                            "output": 8192,
+                        },
+                    }
+                },
+            }
+        },
+        "mcp": {
+            "honeymcp_hr": server_config,
+        },
+    }
+    (workspace / "opencode.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
+
+
+def _event_text(event: dict[str, Any]) -> str:
+    part = event.get("part") if isinstance(event.get("part"), dict) else {}
+    for key in ("text", "content", "message"):
+        value = event.get(key)
+        if value:
+            return str(value)
+        value = part.get(key)
+        if value:
+            return str(value)
+    return ""
+
+
+def _event_tool(event: dict[str, Any]) -> tuple[str, dict[str, Any], str]:
+    part = event.get("part") if isinstance(event.get("part"), dict) else {}
+    tool = event.get("tool") or part.get("tool") or event.get("name") or part.get("name") or ""
+    args = (
+        event.get("input")
+        or event.get("arguments")
+        or part.get("input")
+        or part.get("arguments")
+        or {}
+    )
+    output = (
+        event.get("output") or event.get("result") or part.get("output") or part.get("result") or ""
+    )
+    if not isinstance(args, dict):
+        args = {"value": args}
+    return str(tool), args, str(output)
+
+
+def _phase_for_tool(tool: str) -> str:
+    if not tool.startswith("honeymcp_hr_"):
+        return "recon"
+    normalized = tool.removeprefix("honeymcp_hr_")
+    if normalized in REAL_TOOLS:
+        return "legitimate_call"
+    return "honeypot_trigger"
+
+
+def _emit_opencode_event(chat: DemoChatPublisher, event: dict[str, Any]) -> None:
+    event_type = str(event.get("type", ""))
+    session_id = event.get("sessionID") or event.get("session_id")
+
+    if event_type == "step_start":
+        chat.emit(
+            phase="recon",
+            role="agent",
+            kind="message",
+            title="HR agent started",
+            body="The HR agent is connected to the HR MCP tools and is planning the next step.",
+            metadata={"opencode_session": session_id},
+        )
+        return
+
+    if event_type == "text":
+        text = _event_text(event).strip()
+        if text:
+            chat.emit(
+                phase="recon",
+                role="agent",
+                kind="message",
+                title="HR agent says",
+                body=text[:900],
+                metadata={"opencode_session": session_id},
+            )
+        return
+
+    if event_type == "tool_use":
+        tool, args, output = _event_tool(event)
+        if not tool.startswith("honeymcp_hr_"):
+            return
+        phase = _phase_for_tool(tool)
+        chat.emit(
+            phase=phase,
+            role="agent",
+            kind="tool_call",
+            title=f"{tool}()",
+            body=f"HR agent used {tool} with {json.dumps(args, default=str)}",
+            metadata={"tool": tool, "arguments": args, "opencode_session": session_id},
+        )
+        if output:
+            role = "mcp"
+            kind = "tool_result"
+            title = "MCP response"
+            if phase == "honeypot_trigger":
+                role = "honeymcp"
+                kind = "capture"
+                title = "HoneyMCP deception triggered"
+            chat.emit(
+                phase="capture" if kind == "capture" else phase,
+                role=role,
+                kind=kind,
+                title=title,
+                body=output[:900],
+                metadata={"tool": tool, "response_preview": output[:900]},
+            )
+        return
+
+    if event_type == "error":
+        chat.emit(
+            phase="recon",
+            role="honeymcp",
+            kind="summary",
+            title="OpenCode error",
+            body=_event_text(event) or json.dumps(event, default=str)[:900],
+            metadata={"opencode_session": session_id},
+        )
+
+
+async def _drive_opencode_agent_session(
+    env: dict[str, str],
+    pacer: Pacer,
+    event_dir: Path,
+    transport: str,
+    summary: dict[str, Any],
+    chat: DemoChatPublisher,
+) -> bool:
+    """Run OpenCode as the implementation behind the live HR agent."""
+    opencode_path = shutil.which("opencode")
+    if not opencode_path:
+        chat.emit(
+            phase="recon",
+            role="honeymcp",
+            kind="summary",
+            title="OpenCode not found",
+            body="The opencode CLI is not on PATH.",
+        )
+        return False
+
+    step(1, "HR agent connects to the protected HR MCP tools")
+    workspace = event_dir.parent / "opencode-agent"
+    if workspace.exists():
+        shutil.rmtree(workspace, ignore_errors=True)
+    _write_opencode_config(workspace, env, transport)
+
+    chat.emit(
+        phase="recon",
+        role="agent",
+        kind="message",
+        title="HR agent launch",
+        body="Launching the HR agent with the protected HR MCP server configured as a tool provider.",
+        metadata={
+            "opencode_workspace": str(workspace),
+            "transport": "http" if transport == "http" else "stdio",
+            "model": os.getenv("OPENCODE_MODEL", f"{OPENCODE_PROVIDER_ID}/{OPENCODE_MODEL_ID}"),
+            "base_url": OPENCODE_BASE_URL,
+        },
+    )
+
+    proc_to_stop: Optional[subprocess.Popen] = None
+    if transport == "http":
+        server_log = event_dir.parent / "server.log"
+        proc_to_stop = _start_network_server(env, "http", server_log)
+
+    cmd = [
+        opencode_path,
+        "run",
+        "--format",
+        "json",
+        "--dir",
+        str(workspace),
+        "--title",
+        "HoneyMCP Black Hat HR Agent",
+        *_opencode_model_args(),
+        _opencode_prompt(),
+    ]
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(workspace),
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+
+        saw_honeymcp_tool = False
+        stdout_lines: list[str] = []
+        stderr_tail: list[str] = []
+
+        async def read_stdout() -> None:
+            nonlocal saw_honeymcp_tool
+            assert proc.stdout is not None
+            while True:
+                line = await asyncio.to_thread(proc.stdout.readline)
+                if not line:
+                    break
+                stdout_lines.append(line)
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if event.get("type") == "tool_use":
+                    tool, _, _ = _event_tool(event)
+                    if not tool.startswith("honeymcp_hr_"):
+                        _emit_opencode_event(chat, event)
+                        continue
+                    normalized = tool.removeprefix("honeymcp_hr_")
+                    if normalized not in REAL_TOOLS:
+                        if not summary["triggered"]:
+                            summary["triggered"] = normalized or tool
+                        if normalized not in summary["honeypots"]:
+                            summary["honeypots"].append(normalized)
+                        summary["dynamic"] = True
+                    saw_honeymcp_tool = True
+                _emit_opencode_event(chat, event)
+
+        async def read_stderr() -> None:
+            assert proc.stderr is not None
+            while True:
+                line = await asyncio.to_thread(proc.stderr.readline)
+                if not line:
+                    break
+                stderr_tail.append(line.strip())
+                del stderr_tail[:-12]
+
+        await asyncio.wait_for(
+            asyncio.gather(read_stdout(), read_stderr()),
+            timeout=180,
+        )
+        code = await asyncio.to_thread(proc.wait)
+        if code != 0:
+            chat.emit(
+                phase="recon",
+                role="honeymcp",
+                kind="summary",
+                title="OpenCode exited with error",
+                body="\n".join(stderr_tail)[-900:] or f"Exit code {code}",
+                metadata={"exit_code": code},
+            )
+            return False
+
+        chat.emit(
+            phase="result",
+            role="agent",
+            kind="summary",
+            title="HR agent run complete",
+            body="The HR agent completed the live MCP tool run.",
+            metadata={"saw_honeymcp_tool_use": saw_honeymcp_tool},
+        )
+        pacer.beat(0.8)
+        return saw_honeymcp_tool
+    except asyncio.TimeoutError:
+        with contextlib.suppress(Exception):
+            proc.terminate()  # type: ignore[possibly-used-before-assignment]
+        chat.emit(
+            phase="recon",
+            role="honeymcp",
+            kind="summary",
+            title="HR agent timed out",
+            body="The live HR agent exceeded the demo timeout.",
+        )
+        return False
+    finally:
+        if proc_to_stop is not None:
+            proc_to_stop.terminate()
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                proc_to_stop.wait(timeout=5)
+            if proc_to_stop.poll() is None:
+                proc_to_stop.kill()
+
+
+async def _drive_scripted_session(
+    session: Any,
+    summary: dict[str, Any],
+    pacer: Pacer,
+    chat: DemoChatPublisher,
+) -> None:
     """Steps 1-4: the attack itself, driven against a live MCP session."""
     # --- 1. Reconnaissance: what tools does this server expose? ---
-    step(1, "Agent connects and enumerates the tool surface" + dim(" (recon)"))
+    step(1, "HR agent connects and enumerates the tool surface" + dim(" (recon)"))
+    chat.emit(
+        phase="recon",
+        role="agent",
+        kind="message",
+        title="HR agent connects",
+        body="I am connected to the HR MCP server. I will enumerate the MCP tool surface.",
+    )
     pacer.beat()
 
     listed = await session.list_tools()
@@ -424,6 +857,19 @@ async def _drive_session(session: Any, summary: dict[str, Any], pacer: Pacer) ->
         "      "
         + dim("The agent cannot tell these apart. Neither could a human " "reading the schema.")
     )
+    chat.emit(
+        phase="recon",
+        role="mcp",
+        kind="tool_result",
+        title=f"{len(names)} tools advertised",
+        body=", ".join(names),
+        metadata={
+            "tools": names,
+            "real_tools": sorted(REAL_TOOLS.intersection(names)),
+            "honeypots": honeypots,
+            "dynamic": summary["dynamic"],
+        },
+    )
     pacer.beat(1.4)
 
     if not honeypots:
@@ -434,15 +880,39 @@ async def _drive_session(session: Any, summary: dict[str, Any], pacer: Pacer) ->
 
     # --- 2. A legitimate call, to prove zero false positives ---
     print()
-    step(2, "Agent makes a " + bold("legitimate") + " call: list_departments()")
+    step(2, "HR agent makes a " + bold("legitimate") + " call: list_departments()")
+    chat.emit(
+        phase="legitimate_call",
+        role="agent",
+        kind="tool_call",
+        title="list_departments()",
+        body="I will make a normal HR lookup first to confirm the server responds.",
+        metadata={"tool": "list_departments", "arguments": {}},
+    )
     pacer.beat()
     legit = await session.call_tool("list_departments", {})
     if _is_error(legit):
         print(f"      {red('unexpected error on a real tool')}")
+        chat.emit(
+            phase="legitimate_call",
+            role="mcp",
+            kind="tool_result",
+            title="Unexpected real-tool error",
+            body=_text_of(legit).strip()[:700],
+            metadata={"tool": "list_departments", "is_error": True},
+        )
     else:
         print(f"      {green('OK')} -- real data returned, nothing logged, no alert.")
         print(f"      {dim('Legitimate traffic is never affected. This matters: a')}")
         print(f"      {dim('honeypot that fires on real users is worse than none.')}")
+        chat.emit(
+            phase="legitimate_call",
+            role="mcp",
+            kind="tool_result",
+            title="Benign response",
+            body=_text_of(legit).strip()[:700],
+            metadata={"tool": "list_departments", "is_error": False},
+        )
     pacer.beat(1.4)
 
     # --- 3. The grab: agent takes the bait ---
@@ -452,7 +922,15 @@ async def _drive_session(session: Any, summary: dict[str, Any], pacer: Pacer) ->
     # fallback. Either way the capture path is identical.
     target = generated[0] if generated else honeypots[0]
     print()
-    step(3, "Agent goes for the high-value data: " + bold(red(f"{target}()")))
+    step(3, "HR agent goes for the high-value data: " + bold(red(f"{target}()")))
+    chat.emit(
+        phase="honeypot_trigger",
+        role="agent",
+        kind="message",
+        title="HR agent escalates",
+        body="The tool surface includes something that looks high-value. I will try it now.",
+        metadata={"tool": target},
+    )
     if target in generated:
         print(f"      {dim('Note the name -- the LLM invented it to fit an HR server.')}")
     print(f"      {dim('This is the moment an exfiltration attempt becomes visible.')}")
@@ -461,6 +939,14 @@ async def _drive_session(session: Any, summary: dict[str, Any], pacer: Pacer) ->
     grab_args = _args_for(schemas.get(target) or {})
     if grab_args:
         print(f"      {dim('args: ' + json.dumps(grab_args))}")
+    chat.emit(
+        phase="honeypot_trigger",
+        role="agent",
+        kind="tool_call",
+        title=f"{target}()",
+        body=f"Calling {target} with {json.dumps(grab_args)}",
+        metadata={"tool": target, "arguments": grab_args},
+    )
     grab = await session.call_tool(target, grab_args)
     text = _text_of(grab)
     preview = text.strip().splitlines()[:4]
@@ -472,7 +958,23 @@ async def _drive_session(session: Any, summary: dict[str, Any], pacer: Pacer) ->
     if len(text.strip().splitlines()) > 4:
         print(f"        {dim('...')}")
     print()
-    print(f"      {red(bold('>> ATTACK CAPTURED'))} -- the agent believes it succeeded.")
+    print(f"      {red(bold('>> ATTACK CAPTURED'))} -- the HR agent believes it succeeded.")
+    chat.emit(
+        phase="capture",
+        role="honeymcp",
+        kind="capture",
+        title="Attack captured",
+        body=(
+            "The HR agent triggered a HoneyMCP ghost tool. HoneyMCP returned fake data "
+            "and recorded the attempt."
+        ),
+        metadata={
+            "tool": target,
+            "arguments": grab_args,
+            "response_preview": "\n".join(preview)[:700],
+            "threat_level": "critical",
+        },
+    )
     summary["triggered"] = target
     pacer.beat(1.6)
 
@@ -483,21 +985,50 @@ async def _drive_session(session: Any, summary: dict[str, Any], pacer: Pacer) ->
     # regresses (it silently no-op'd for the whole FastMCP 3.x
     # dispatch-bug window, see tests/test_protection_mode_enforcement).
     print()
-    step(4, "Agent continues probing after the grab")
+    step(4, "HR agent continues probing after the grab")
+    chat.emit(
+        phase="followup",
+        role="agent",
+        kind="tool_call",
+        title="get_employee_profile()",
+        body="I will probe a normal employee profile after the high-value grab.",
+        metadata={"tool": "get_employee_profile", "arguments": {"employee_id": "E1001"}},
+    )
     pacer.beat()
     after = await session.call_tool("get_employee_profile", {"employee_id": "E1001"})
     summary["blocked"] = _is_error(after)
     if summary["blocked"]:
         print(f"      {red('BLOCKED')} -- {_text_of(after).strip()[:60]}")
         print(f"      {dim('SCANNER mode burned the session: every later call fails.')}")
+        chat.emit(
+            phase="followup",
+            role="honeymcp",
+            kind="block",
+            title="Session locked out",
+            body=_text_of(after).strip()[:700],
+            metadata={"tool": "get_employee_profile", "blocked": True},
+        )
     else:
         print(f"      {dim('Call still served -- the agent suspects nothing.')}")
         print(f"      {dim('Detection is passive here: the value is the capture')}")
         print(f"      {dim('and the forensic record, not blocking the caller.')}")
+        chat.emit(
+            phase="followup",
+            role="mcp",
+            kind="tool_result",
+            title="Follow-up served",
+            body=_text_of(after).strip()[:700],
+            metadata={"tool": "get_employee_profile", "blocked": False},
+        )
     pacer.beat(1.2)
 
 
-def _report_forensics(summary: dict[str, Any], event_dir: Path, pacer: Pacer) -> dict[str, Any]:
+def _report_forensics(
+    summary: dict[str, Any],
+    event_dir: Path,
+    pacer: Pacer,
+    chat: DemoChatPublisher,
+) -> dict[str, Any]:
     """Step 5: read back what HoneyMCP persisted, after the server has exited."""
     print()
     step(5, "What the defender is left holding")
@@ -513,10 +1044,36 @@ def _report_forensics(summary: dict[str, Any], event_dir: Path, pacer: Pacer) ->
         time.sleep(0.1)
     if not events:
         print(f"      {yellow('No event files found yet')} at {event_dir}")
+        chat.emit(
+            phase="forensics",
+            role="honeymcp",
+            kind="summary",
+            title="Forensic record pending",
+            body=f"No event files were found yet at {event_dir}.",
+        )
         return summary
 
     fingerprint = json.loads(events[-1].read_text())
     summary["event"] = fingerprint
+    chat.emit(
+        phase="forensics",
+        role="honeymcp",
+        kind="summary",
+        title="Forensic record written",
+        body="HoneyMCP persisted the full attack fingerprint for defender review.",
+        metadata={
+            "event_id": fingerprint.get("event_id"),
+            "session_id": fingerprint.get("session_id"),
+            "tool": fingerprint.get("ghost_tool_called")
+            or fingerprint.get("tool_name")
+            or fingerprint.get("ghost_tool_name"),
+            "arguments": fingerprint.get("arguments", {}),
+            "tool_call_sequence": fingerprint.get("tool_call_sequence") or [],
+            "threat_level": fingerprint.get("threat_level"),
+            "attack_category": fingerprint.get("attack_category"),
+            "timestamp": fingerprint.get("timestamp"),
+        },
+    )
 
     def show(label: str, value: Any) -> None:
         if value not in (None, "", [], {}):
@@ -558,6 +1115,11 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--no-dashboard", action="store_true", help="terminal only")
     p.add_argument("--static", action="store_true", help="force static honeypots (no LLM)")
+    p.add_argument(
+        "--scripted-agent",
+        action="store_true",
+        help="use the deterministic scripted attack path instead of the OpenCode-backed HR agent",
+    )
     p.add_argument("--keep-events", action="store_true", help="keep events from earlier runs")
     p.add_argument("--slow", action="store_true", help="slower narration")
     p.add_argument("--fast", action="store_true", help="minimal pauses")
@@ -596,35 +1158,43 @@ def main() -> int:
     env["HONEYMCP_EVENT_PATH"] = str(event_dir)
     if args.static:
         env["ARSENAL_STATIC_ONLY"] = "1"
+    use_opencode_agent = not args.static and not args.scripted_agent
 
-    banner("HoneyMCP -- catching a malicious AI agent in the act")
-    print("  A protected HR MCP server. An agent that wants the payroll data.")
+    banner("HoneyMCP -- catching misuse of an HR agent in the act")
+    print("  A protected HR MCP server. An HR agent being used to grab payroll data.")
     print(f"  {dim('Events -> ' + str(event_dir))}")
     if transport == "stdio":
         print(f"  {yellow('Transport -> stdio (explicit fallback; network demo is SSE/HTTP)')}")
     else:
         print(f"  {dim('Transport -> ' + transport + ' at ' + _transport_url(transport))}")
     if args.static:
-        print(f"  {dim('Honeypots -> static catalog (offline mode)')}")
+        print(f"  {dim('Honeypots -> static catalog (offline mode); agent -> scripted')}")
     else:
         print(f"  {dim('Honeypots -> LLM-generated, static fallback if unreachable')}")
+        print(
+            f"  {dim('HR agent -> ' + ('OpenCode-backed' if use_opencode_agent else 'scripted flow'))}"
+        )
 
     dash: Optional[subprocess.Popen] = None
     try:
+        chat = DemoChatPublisher(event_dir, enabled=not args.no_dashboard)
         if not args.no_dashboard:
             print()
             print(f"  Starting dashboard {dim('(this is the defender view)')} ...")
             dash = start_dashboard(env)
             if dash or _port_open(DASHBOARD_HOST, DASHBOARD_PORT):
                 print(f"  {green('Dashboard up')} -> {bold(DASHBOARD_URL)}")
-                print(f"  {dim('Open it now, side by side with this terminal.')}")
+                print(f"  {green('HR agent chat up')} -> {bold(ARSENAL_CHAT_URL)}")
+                print(f"  {dim('Open the chat for the audience, dashboard for defender detail.')}")
                 pacer.beat(2.2)
             else:
                 print(f"  {yellow('Dashboard unavailable')} -- continuing terminal-only.")
                 print(f"  {dim('Run `make run-ui` separately if you want the UI.')}")
 
         banner("Live attack")
-        summary = asyncio.run(run_attack(env, pacer, event_dir, transport))
+        summary = asyncio.run(
+            run_attack(env, pacer, event_dir, transport, chat, use_opencode_agent)
+        )
 
         banner("Result")
         gen = "LLM-generated (live)" if summary.get("dynamic") else "static catalog"
@@ -646,6 +1216,7 @@ def main() -> int:
         if dash or _port_open(DASHBOARD_HOST, DASHBOARD_PORT):
             print()
             print(f"  Dashboard: {bold(DASHBOARD_URL)}")
+            print(f"  HR agent chat: {bold(ARSENAL_CHAT_URL)}")
             print(f"  {dim('Press Ctrl-C when you are done presenting.')}")
             try:
                 while True:
