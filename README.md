@@ -85,6 +85,12 @@ Dynamic ghost tools demo (requires LLM credentials in `.env.honeymcp`):
 MCP_TRANSPORT=sse uv run python examples/demo_server_dynamic.py
 ```
 
+Cognitive-mode CRM demo (keeps detected attackers engaged with synthetic data):
+
+```bash
+MCP_TRANSPORT=sse uv run python examples/cognitive_crm_server.py
+```
+
 # Launch dashboard UI
 ```bash
 make run-ui
